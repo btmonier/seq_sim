@@ -1,0 +1,75 @@
+package net.maizegenetics.commands
+
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.path
+import net.maizegenetics.utils.FileDownloader
+import net.maizegenetics.utils.ProcessRunner
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.Logger
+import java.io.File
+import java.nio.file.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.exists
+import kotlin.system.exitProcess
+
+class SetupEnvironment : CliktCommand(name = "setup-environment") {
+    private val logger: Logger = LogManager.getLogger(SetupEnvironment::class.java)
+
+    private val workDir by option(
+        "--work-dir", "-w",
+        help = "Working directory for files and scripts"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+        .default(Path.of("seq_sim_work"))
+
+    override fun run() {
+        logger.info("Starting environment setup")
+        logger.info("Working directory: $workDir")
+
+        // Create working directory if it doesn't exist
+        if (!workDir.exists()) {
+            logger.debug("Creating working directory: $workDir")
+            workDir.createDirectories()
+            logger.info("Working directory created: $workDir")
+        }
+
+        // Copy pixi.toml from resources to current directory
+        val pixiTomlFile = File("pixi.toml")
+        if (!FileDownloader.copyResourceToFile("/pixi.toml", pixiTomlFile, logger)) {
+            exitProcess(1)
+        }
+
+        // Install pixi environment
+        val pixiExitCode = ProcessRunner.runCommand("pixi", "install", logger = logger)
+        if (pixiExitCode != 0) {
+            logger.error("pixi install failed with exit code $pixiExitCode")
+            logger.error("Make sure pixi is installed. Visit: https://pixi.sh/")
+            exitProcess(pixiExitCode)
+        }
+        logger.info("Pixi environment initialized successfully")
+
+        // Download and extract MLImpute repository
+        val mlImputeUrl = "https://github.com/maize-genetics/MLImpute/archive/refs/heads/main.zip"
+        val srcDir = workDir.resolve("src")
+        val mlImputeDir = srcDir.resolve("MLImpute").toFile()
+
+        if (mlImputeDir.exists()) {
+            logger.info("MLImpute directory already exists: $mlImputeDir")
+        } else {
+            // Create src directory
+            if (!srcDir.exists()) {
+                logger.debug("Creating src directory: $srcDir")
+                srcDir.createDirectories()
+            }
+
+            // Download to src directory
+            if (!FileDownloader.downloadAndExtractZip(mlImputeUrl, srcDir, logger)) {
+                exitProcess(1)
+            }
+        }
+
+        logger.info("Environment setup completed successfully")
+        logger.info("To activate the environment, run: pixi shell")
+    }
+}

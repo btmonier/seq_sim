@@ -1,0 +1,32 @@
+[workspace]
+name = "seq-sim-env"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]
+
+[activation.env]
+PYTHONPATH = "${PIXI_PROJECT_ROOT}/src"
+
+# Base dependencies (all platforms)
+[dependencies]
+python = "3.10.*"
+pip = "*"
+numpy = "*"
+pandas = "*"
+agc = "==3.1"
+ropebwt3 = "==3.8"
+minimap2 = "==2.28"
+
+# Linux-only dependencies (AnchorWave not available on macOS)
+[target.linux-64.dependencies]
+anchorwave = "*"
+
+[target.linux-aarch64.dependencies]
+anchorwave = "*"
+
+[pypi-dependencies]
+pytest = "*"
+pytest-cov = "*"
+
+[tasks]
+# Add common tasks here as needed
+test = "pytest"

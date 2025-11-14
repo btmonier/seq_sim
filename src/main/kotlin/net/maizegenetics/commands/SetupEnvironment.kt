@@ -4,59 +4,31 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.path
+import net.maizegenetics.Constants
 import net.maizegenetics.utils.FileDownloader
+import net.maizegenetics.utils.LoggingUtils
 import net.maizegenetics.utils.ProcessRunner
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.apache.logging.log4j.core.LoggerContext
-import org.apache.logging.log4j.core.appender.FileAppender
-import org.apache.logging.log4j.core.layout.PatternLayout
-import java.io.File
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.system.exitProcess
 
 class SetupEnvironment : CliktCommand(name = "setup-environment") {
+    companion object {
+        private const val LOG_FILE_NAME = "setup_environment.log"
+        private const val PIXI_TOML_RESOURCE = "/pixi.toml"
+        private const val PIXI_TOML_FILE = "pixi.toml"
+    }
+
     private val logger: Logger = LogManager.getLogger(SetupEnvironment::class.java)
 
     private val workDir by option(
         "--work-dir", "-w",
         help = "Working directory for files and scripts"
     ).path(mustExist = false, canBeFile = false, canBeDir = true)
-        .default(Path.of("seq_sim_work"))
-
-    private fun setupFileLogging() {
-        val logsDir = workDir.resolve("logs")
-        if (!logsDir.exists()) {
-            logsDir.createDirectories()
-        }
-
-        val logFile = logsDir.resolve("setup_environment.log").toFile()
-        val context = LogManager.getContext(false) as LoggerContext
-        val config = context.configuration
-
-        val layout = PatternLayout.newBuilder()
-            .withConfiguration(config)
-            .withPattern("%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n")
-            .build()
-
-        val appender = FileAppender.newBuilder()
-            .withFileName(logFile.absolutePath)
-            .withAppend(true)
-            .withLocking(false)
-            .setName("WorkDirFileLogger")
-            .setLayout(layout)
-            .setConfiguration(config)
-            .build()
-
-        appender.start()
-        config.addAppender(appender)
-        config.rootLogger.addAppender(appender, null, null)
-        context.updateLoggers()
-
-        logger.info("Logging to file: $logFile")
-    }
+        .default(Path.of(Constants.DEFAULT_WORK_DIR))
 
     override fun run() {
         // Create working directory if it doesn't exist
@@ -65,14 +37,14 @@ class SetupEnvironment : CliktCommand(name = "setup-environment") {
         }
 
         // Configure file logging to working directory
-        setupFileLogging()
+        LoggingUtils.setupFileLogging(workDir, LOG_FILE_NAME, logger)
 
         logger.info("Starting environment setup")
         logger.info("Working directory: $workDir")
 
         // Copy pixi.toml from resources to working directory
-        val pixiTomlFile = workDir.resolve("pixi.toml").toFile()
-        if (!FileDownloader.copyResourceToFile("/pixi.toml", pixiTomlFile, logger)) {
+        val pixiTomlFile = workDir.resolve(PIXI_TOML_FILE).toFile()
+        if (!FileDownloader.copyResourceToFile(PIXI_TOML_RESOURCE, pixiTomlFile, logger)) {
             exitProcess(1)
         }
 
@@ -85,22 +57,33 @@ class SetupEnvironment : CliktCommand(name = "setup-environment") {
         }
         logger.info("Pixi environment initialized successfully")
 
+        // Create src directory
+        val srcDir = workDir.resolve(Constants.SRC_DIR)
+        if (!srcDir.exists()) {
+            logger.debug("Creating src directory: $srcDir")
+            srcDir.createDirectories()
+        }
+
         // Download and extract MLImpute repository
-        val mlImputeUrl = "https://github.com/maize-genetics/MLImpute/archive/refs/heads/main.zip"
-        val srcDir = workDir.resolve("src")
-        val mlImputeDir = srcDir.resolve("MLImpute").toFile()
+        val mlImputeDir = srcDir.resolve(Constants.MLIMPUTE_DIR).toFile()
 
         if (mlImputeDir.exists()) {
             logger.info("MLImpute directory already exists: $mlImputeDir")
         } else {
-            // Create src directory
-            if (!srcDir.exists()) {
-                logger.debug("Creating src directory: $srcDir")
-                srcDir.createDirectories()
-            }
-
             // Download to src directory
-            if (!FileDownloader.downloadAndExtractZip(mlImputeUrl, srcDir, logger)) {
+            if (!FileDownloader.downloadAndExtractZip(Constants.MLIMPUTE_URL, srcDir, logger)) {
+                exitProcess(1)
+            }
+        }
+
+        // Download and extract biokotlin-tools
+        val biokotlinDir = srcDir.resolve(Constants.BIOKOTLIN_TOOLS_DIR).toFile()
+
+        if (biokotlinDir.exists()) {
+            logger.info("biokotlin-tools directory already exists: $biokotlinDir")
+        } else {
+            // Download and extract to src directory
+            if (!FileDownloader.downloadAndExtractTar(Constants.BIOKOTLIN_TOOLS_URL, srcDir, logger)) {
                 exitProcess(1)
             }
         }

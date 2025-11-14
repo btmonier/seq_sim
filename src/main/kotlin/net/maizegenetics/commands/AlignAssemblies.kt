@@ -6,26 +6,42 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
+import net.maizegenetics.Constants
+import net.maizegenetics.utils.LoggingUtils
 import net.maizegenetics.utils.ProcessRunner
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.apache.logging.log4j.core.LoggerContext
-import org.apache.logging.log4j.core.appender.FileAppender
-import org.apache.logging.log4j.core.config.Configurator
-import org.apache.logging.log4j.core.layout.PatternLayout
-import java.io.File
 import java.nio.file.Path
 import kotlin.io.path.*
 import kotlin.system.exitProcess
 
 class AlignAssemblies : CliktCommand(name = "align-assemblies") {
+    companion object {
+        private const val LOG_FILE_NAME = "align_assemblies.log"
+        private const val OUTPUT_DIR = "output"
+        private const val ANCHORWAVE_RESULTS_DIR = "anchorwave_results"
+
+        // minimap2 parameters
+        private const val MINIMAP2_PRESET = "splice"
+        private const val MINIMAP2_KMER_SIZE = "12"
+        private const val MINIMAP2_P_VALUE = "0.4"
+        private const val MINIMAP2_N_VALUE = "20"
+
+        // anchorwave proali parameters
+        private const val ANCHORWAVE_R_VALUE = "1"
+        private const val ANCHORWAVE_Q_VALUE = "1"
+
+        // Default values
+        private const val DEFAULT_THREADS = 1
+    }
+
     private val logger: Logger = LogManager.getLogger(AlignAssemblies::class.java)
 
     private val workDir by option(
         "--work-dir", "-w",
         help = "Working directory for files and scripts"
     ).path(mustExist = false, canBeFile = false, canBeDir = true)
-        .default(Path.of("seq_sim_work"))
+        .default(Path.of(Constants.DEFAULT_WORK_DIR))
 
     private val refGff by option(
         "--ref-gff", "-g",
@@ -49,50 +65,17 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
         "--threads", "-t",
         help = "Number of threads to use"
     ).int()
-        .default(1)
-
-    private fun setupFileLogging() {
-        val logsDir = workDir.resolve("logs")
-        if (!logsDir.exists()) {
-            logsDir.createDirectories()
-        }
-
-        val logFile = logsDir.resolve("align_assemblies.log").toFile()
-        val context = LogManager.getContext(false) as LoggerContext
-        val config = context.configuration
-
-        val layout = PatternLayout.newBuilder()
-            .withConfiguration(config)
-            .withPattern("%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n")
-            .build()
-
-        val appender = FileAppender.newBuilder()
-            .withFileName(logFile.absolutePath)
-            .withAppend(true)
-            .withLocking(false)
-            .setName("WorkDirFileLogger")
-            .setLayout(layout)
-            .setConfiguration(config)
-            .build()
-
-        appender.start()
-        config.addAppender(appender)
-        config.rootLogger.addAppender(appender, null, null)
-        context.updateLoggers()
-
-        logger.info("Logging to file: $logFile")
-    }
+        .default(DEFAULT_THREADS)
 
     private fun collectQueryFiles(): List<Path> {
         val queryFiles = mutableListOf<Path>()
-        val fastaExtensions = setOf("fa", "fasta", "fna")
 
         when {
             queryInput.isDirectory() -> {
                 // Collect all FASTA files from directory
                 logger.info("Collecting FASTA files from directory: $queryInput")
                 queryInput.listDirectoryEntries().forEach { file ->
-                    if (file.isRegularFile() && file.extension in fastaExtensions) {
+                    if (file.isRegularFile() && file.extension in Constants.FASTA_EXTENSIONS) {
                         queryFiles.add(file)
                     }
                 }
@@ -104,7 +87,7 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
             }
             queryInput.isRegularFile() -> {
                 // Check if it's a .txt file with paths or a single FASTA file
-                if (queryInput.extension == "txt") {
+                if (queryInput.extension == Constants.TEXT_FILE_EXTENSION) {
                     // It's a text file with paths
                     logger.info("Reading query file paths from: $queryInput")
                     queryInput.readLines().forEach { line ->
@@ -123,7 +106,7 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
                         exitProcess(1)
                     }
                     logger.info("Found ${queryFiles.size} query file(s) in list")
-                } else if (queryInput.extension in fastaExtensions) {
+                } else if (queryInput.extension in Constants.FASTA_EXTENSIONS) {
                     // It's a single FASTA file
                     logger.info("Using single query file: $queryInput")
                     queryFiles.add(queryInput)
@@ -150,7 +133,7 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
         }
 
         // Configure file logging to working directory
-        setupFileLogging()
+        LoggingUtils.setupFileLogging(workDir, LOG_FILE_NAME, logger)
 
         logger.info("Starting assembly alignment")
         logger.info("Working directory: $workDir")
@@ -163,7 +146,7 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
         logger.info("Processing ${queryFiles.size} query file(s)")
 
         // Create base output directory
-        val baseOutputDir = workDir.resolve("output").resolve("anchorwave_results")
+        val baseOutputDir = workDir.resolve(OUTPUT_DIR).resolve(ANCHORWAVE_RESULTS_DIR)
         if (!baseOutputDir.exists()) {
             logger.debug("Creating output directory: $baseOutputDir")
             baseOutputDir.createDirectories()
@@ -196,12 +179,12 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
         val refSam = baseOutputDir.resolve("${refBase}.sam")
         val minimap2RefExitCode = ProcessRunner.runCommand(
             "pixi", "run", "minimap2",
-            "-x", "splice",
+            "-x", MINIMAP2_PRESET,
             "-t", threads.toString(),
-            "-k", "12",
+            "-k", MINIMAP2_KMER_SIZE,
             "-a",
-            "-p", "0.4",
-            "-N", "20",
+            "-p", MINIMAP2_P_VALUE,
+            "-N", MINIMAP2_N_VALUE,
             refFasta.toString(),
             cdsFile.toString(),
             workingDir = workDir.toFile(),
@@ -255,12 +238,12 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
         val querySam = queryOutputDir.resolve("${queryName}.sam")
         val minimap2QueryExitCode = ProcessRunner.runCommand(
             "pixi", "run", "minimap2",
-            "-x", "splice",
+            "-x", MINIMAP2_PRESET,
             "-t", threads.toString(),
-            "-k", "12",
+            "-k", MINIMAP2_KMER_SIZE,
             "-a",
-            "-p", "0.4",
-            "-N", "20",
+            "-p", MINIMAP2_P_VALUE,
+            "-N", MINIMAP2_N_VALUE,
             queryFasta.toString(),
             cdsFile.toString(),
             workingDir = workDir.toFile(),
@@ -274,9 +257,9 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
 
         // Step 2: Run anchorwave proali
         logger.info("Running anchorwave proali")
-        val anchorsFile = queryOutputDir.resolve("${refBase}_R1_${queryName}_Q1.anchors")
-        val mafFile = queryOutputDir.resolve("${refBase}_R1_${queryName}_Q1.maf")
-        val fMafFile = queryOutputDir.resolve("${refBase}_R1_${queryName}_Q1.f.maf")
+        val anchorsFile = queryOutputDir.resolve("${refBase}_R${ANCHORWAVE_R_VALUE}_${queryName}_Q${ANCHORWAVE_Q_VALUE}.anchors")
+        val mafFile = queryOutputDir.resolve("${refBase}_R${ANCHORWAVE_R_VALUE}_${queryName}_Q${ANCHORWAVE_Q_VALUE}.maf")
+        val fMafFile = queryOutputDir.resolve("${refBase}_R${ANCHORWAVE_R_VALUE}_${queryName}_Q${ANCHORWAVE_Q_VALUE}.f.maf")
 
         val proaliExitCode = ProcessRunner.runCommand(
             "pixi", "run", "anchorwave", "proali",
@@ -287,8 +270,8 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
             "-ar", refSam.toString(),
             "-s", queryFasta.toString(),
             "-n", anchorsFile.toString(),
-            "-R", "1",
-            "-Q", "1",
+            "-R", ANCHORWAVE_R_VALUE,
+            "-Q", ANCHORWAVE_Q_VALUE,
             "-o", mafFile.toString(),
             "-f", fMafFile.toString(),
             "-t", threads.toString(),

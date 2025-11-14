@@ -215,9 +215,10 @@ class MafToGvcf : CliktCommand(name = "maf-to-gvcf") {
         val fullOutputPath = outputDir.resolve(outputFileName)
         logger.info("Output file: $fullOutputPath")
 
-        // Run biokotlin-tools maf-to-gvcf-converter
+        // Run biokotlin-tools maf-to-gvcf-converter through pixi to use Java 21
         logger.info("Running biokotlin-tools maf-to-gvcf-converter")
         val exitCode = ProcessRunner.runCommand(
+            "pixi", "run",
             biokotlinPath.toString(),
             MAF_TO_GVCF_COMMAND,
             "--reference-file=${referenceFile}",

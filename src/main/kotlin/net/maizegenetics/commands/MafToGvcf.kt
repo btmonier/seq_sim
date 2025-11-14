@@ -16,9 +16,9 @@ import kotlin.system.exitProcess
 
 class MafToGvcf : CliktCommand(name = "maf-to-gvcf") {
     companion object {
-        private const val LOG_FILE_NAME = "maf_to_gvcf.log"
+        private const val LOG_FILE_NAME = "02_maf_to_gvcf.log"
         private const val OUTPUT_DIR = "output"
-        private const val GVCF_RESULTS_DIR = "gvcf_results"
+        private const val GVCF_RESULTS_DIR = "02_gvcf_results"
         private const val GVCF_PATHS_FILE = "gvcf_file_paths.txt"
         private const val BIOKOTLIN_EXECUTABLE = "biokotlin-tools"
         private const val MAF_TO_GVCF_COMMAND = "maf-to-gvcf-converter"
@@ -208,8 +208,8 @@ class MafToGvcf : CliktCommand(name = "maf-to-gvcf") {
         val outputFileName = if (outputFile != null && isSingleMaf) {
             outputFile!!.fileName
         } else {
-            // Auto-generate output filename based on MAF filename
-            Path.of("${mafBaseName}.g.vcf")
+            // Auto-generate output filename based on MAF filename (compressed)
+            Path.of("${mafBaseName}.g.vcf.gz")
         }
 
         val fullOutputPath = outputDir.resolve(outputFileName)

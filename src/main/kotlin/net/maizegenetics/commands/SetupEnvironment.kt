@@ -17,7 +17,7 @@ import kotlin.system.exitProcess
 
 class SetupEnvironment : CliktCommand(name = "setup-environment") {
     companion object {
-        private const val LOG_FILE_NAME = "setup_environment.log"
+        private const val LOG_FILE_NAME = "00_setup_environment.log"
         private const val PIXI_TOML_RESOURCE = "/pixi.toml"
         private const val PIXI_TOML_FILE = "pixi.toml"
     }

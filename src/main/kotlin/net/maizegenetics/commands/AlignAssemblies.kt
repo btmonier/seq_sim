@@ -17,9 +17,9 @@ import kotlin.system.exitProcess
 
 class AlignAssemblies : CliktCommand(name = "align-assemblies") {
     companion object {
-        private const val LOG_FILE_NAME = "align_assemblies.log"
+        private const val LOG_FILE_NAME = "01_align_assemblies.log"
         private const val OUTPUT_DIR = "output"
-        private const val ANCHORWAVE_RESULTS_DIR = "anchorwave_results"
+        private const val ANCHORWAVE_RESULTS_DIR = "01_anchorwave_results"
         private const val MAF_PATHS_FILE = "maf_file_paths.txt"
 
         // minimap2 parameters

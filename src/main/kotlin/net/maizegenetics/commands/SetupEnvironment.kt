@@ -76,6 +76,23 @@ class SetupEnvironment : CliktCommand(name = "setup-environment") {
             }
         }
 
+        // Make MLImpute gradlew executable
+        val mlImputeGradlew = srcDir.resolve(Constants.MLIMPUTE_DIR)
+            .resolve("src")
+            .resolve("kotlin")
+            .resolve("gradlew")
+            .toFile()
+
+        if (mlImputeGradlew.exists()) {
+            if (mlImputeGradlew.setExecutable(true)) {
+                logger.info("Made MLImpute gradlew executable: ${mlImputeGradlew.path}")
+            } else {
+                logger.warn("Failed to set executable permissions on gradlew: ${mlImputeGradlew.path}")
+            }
+        } else {
+            logger.warn("MLImpute gradlew not found at expected location: ${mlImputeGradlew.path}")
+        }
+
         // Download and extract biokotlin-tools
         val biokotlinDir = srcDir.resolve(Constants.BIOKOTLIN_TOOLS_DIR).toFile()
 

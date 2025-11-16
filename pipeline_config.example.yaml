@@ -1,0 +1,107 @@
+# Example Pipeline Configuration for seq_sim orchestrate command
+# This file demonstrates all available configuration options
+
+# NOTE: Only edit values, please!
+
+# ============================================================================
+# seqSim v0.1 PIPELINE OVERVIEW
+# ============================================================================
+# This pipeline consists of 5 sequential steps:
+#
+# 1. align-assemblies:          Align query assemblies to reference using AnchorWave
+# 2. maf-to-gvcf:               Convert MAF alignment files to compressed GVCF format
+# 3. downsample-gvcf:           Downsample variants at specified rates per chromosome
+# 4. convert-to-fasta:          Generate FASTA files from downsampled variants
+# 5. align-mutated-assemblies:  Realign mutated FASTA files back to reference
+#
+# NOTE: Environment setup is automatic! The orchestrate command will automatically
+#       detect if the working directory and required tools (MLImpute, biokotlin-tools)
+#       are missing and run setup-environment for you. No manual setup required!
+# ============================================================================
+
+# Optional: Working directory for the pipeline (defaults to "seq_sim_work")
+# The orchestrate command will create this and set up tools automatically if needed
+work_dir: "seq_sim_work"
+
+# Optional: Specify which pipeline steps to execute
+# If omitted, all configured steps will be executed
+# To skip a step, comment it out with '#' at the beginning of the line
+run_steps:
+  - align_assemblies           # Step 1: Align original assemblies
+  - maf_to_gvcf                # Step 2: Convert alignments to GVCF
+  - downsample_gvcf            # Step 3: Downsample variants
+  - convert_to_fasta           # Step 4: Generate mutated FASTA files
+  - align_mutated_assemblies   # Step 5: Realign mutated sequences
+
+# Step 1: Align Assemblies
+# Aligns query assemblies to a reference using AnchorWave and minimap2
+# Required to start the pipeline (unless using previous outputs)
+align_assemblies:
+  ref_gff: "path/to/reference.gff"      # Required: Reference GFF annotation file
+  ref_fasta: "path/to/reference.fa"     # Required: Reference FASTA file
+  query_fasta: "path/to/queries.txt"    # Required: Single query file, directory, or text list
+  threads: 1                            # Optional: Number of threads (default: 1)
+
+# Step 2: MAF to GVCF Conversion
+# Converts MAF files from align_assemblies to compressed GVCF format
+# Automatically uses ref_fasta from align_assemblies and MAF output paths
+maf_to_gvcf:
+  sample_name: "optional_sample_name"   # Optional: Override sample name in GVCF
+
+# Step 3: Downsample GVCF
+# Downsamples GVCF files at specified rates per chromosome
+# Automatically uses GVCF output directory from maf_to_gvcf
+downsample_gvcf:
+  ignore_contig: ""                     # Optional: Comma-separated patterns to ignore
+  rates: "0.01,0.05,0.1,0.15,0.2"       # Optional: Comma-separated downsampling rates
+  seed: 42                              # Optional: Random seed for reproducibility
+  keep_ref: true                        # Optional: Keep reference blocks (default: true)
+  min_ref_block_size: 20                # Optional: Minimum ref block size (default: 20)
+
+# Step 4: Convert to FASTA
+# Converts downsampled GVCF files to FASTA format
+# Automatically uses ref_fasta from align_assemblies and GVCF output from downsample_gvcf
+convert_to_fasta:
+  missing_records_as: "asRef"            # Optional: Missing records (asN, asRef, asNone)
+  missing_genotype_as: "asN"             # Optional: Missing genotypes (asN, asRef, asNone)
+
+# Step 5: Align Mutated Assemblies
+# Realigns the mutated FASTA files from convert_to_fasta back to the reference
+# Automatically uses ref_gff and ref_fasta from align_assemblies, and FASTA files from convert_to_fasta
+# This creates a circular workflow where mutated sequences are realigned for comparison
+align_mutated_assemblies:
+  threads: 1                             # Optional: Number of threads (default: 1)
+
+# ============================================================================
+# Usage Examples:
+# ============================================================================
+#
+# 1. Run the full pipeline (all configured steps):
+#    ./gradlew run --args="orchestrate --config pipeline_config.yaml"
+#    Note: Environment setup runs automatically if needed on first run!
+#
+# 2. Run only specific steps (comment out steps you don't want):
+#    run_steps:
+#      - align_assemblies
+#      - maf_to_gvcf
+#      # - downsample_gvcf          # Commented out - will skip
+#      # - convert_to_fasta         # Commented out - will skip
+#      # - align_mutated_assemblies # Commented out - will skip
+#
+# 3. Rerun only the last step (requires previous outputs):
+#    run_steps:
+#      # - align_assemblies
+#      # - maf_to_gvcf
+#      # - downsample_gvcf
+#      # - convert_to_fasta
+#      - align_mutated_assemblies   # Only this will run
+#
+# 4. Run steps 1-2-4-5 (skip downsampling):
+#    run_steps:
+#      - align_assemblies
+#      - maf_to_gvcf
+#      # - downsample_gvcf          # Commented out
+#      - convert_to_fasta           # Will use maf_to_gvcf outputs
+#      - align_mutated_assemblies
+#
+# ============================================================================

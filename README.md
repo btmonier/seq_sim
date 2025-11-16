@@ -1,6 +1,6 @@
-# seq_sim
+# seqSim
 
-Sequuence simulator pipeline and orchestrator for MLImpute
+Sequence simulator pipeline and orchestrator for MLImpute - A comprehensive bioinformatics pipeline for assembly alignment, variant simulation, and comparative analysis.
 
 ## Requirements
 
@@ -10,45 +10,135 @@ Sequuence simulator pipeline and orchestrator for MLImpute
 
 ## Quick Start
 
-### 1. Build the application
+### One-Command Pipeline Execution (Recommended)
 
 ```bash
+# 1. Build the application
 ./gradlew build
+
+# 2. Create your pipeline configuration
+cp pipeline_config.example.yaml my_pipeline.yaml
+# Edit my_pipeline.yaml with your file paths
+
+# 3. Run the entire pipeline (automatic environment setup!)
+./gradlew run --args="orchestrate --config my_pipeline.yaml"
 ```
 
-### 2. Run environment setup
+The orchestrate command automatically:
+- Detects if environment setup is needed
+- Downloads and installs required tools
+- Runs all configured pipeline steps in sequence
+- Tracks outputs between steps
+
+### Manual Step-by-Step Execution
 
 ```bash
+# 1. Build the application
+./gradlew build
+
+# 2. Set up environment (automatic with orchestrate, or run manually)
 ./gradlew run --args="setup-environment"
-```
 
-This initializes the pixi environment and downloads required tools. Default working directory: `seq_sim_work`
+# 3. Align assemblies
+./gradlew run --args="align-assemblies --ref-gff ref.gff --ref-fasta ref.fa --query-fasta queries/"
 
-### 3. Run the pipeline
+# 4. Convert to GVCF
+./gradlew run --args="maf-to-gvcf --reference-file ref.fa --maf-file seq_sim_work/output/01_anchorwave_results/maf_file_paths.txt"
 
-```bash
-# Align assemblies
-./gradlew run --args="align-assemblies --ref-gff reference.gff --ref-fasta reference.fa --query-fasta queries/"
+# 5. Downsample variants
+./gradlew run --args="downsample-gvcf --gvcf-dir seq_sim_work/output/02_gvcf_results/"
 
-# Convert to GVCF
-./gradlew run --args="maf-to-gvcf --reference-file reference.fa --maf-file seq_sim_work/output/01_anchorwave_results/maf_file_paths.txt"
+# 6. Generate mutated FASTA files
+./gradlew run --args="convert-to-fasta --ref-fasta ref.fa --gvcf-file seq_sim_work/output/03_downsample_results/"
+
+# 7. Realign mutated assemblies
+./gradlew run --args="align-mutated-assemblies --ref-gff ref.gff --ref-fasta ref.fa --fasta-input seq_sim_work/output/04_fasta_results/"
 ```
 
 ## Pipeline Overview
 
-The pipeline consists of three sequential commands:
+The pipeline consists of six commands:
 
-1. **setup-environment** (00): Initialize the pixi environment and download required tools
-2. **align-assemblies** (01): Align query assemblies to a reference using AnchorWave and minimap2
-3. **maf-to-gvcf** (02): Convert MAF alignments to compressed GVCF format
+| Step | Command | Description |
+|------|---------|-------------|
+| 00 | **setup-environment** | Initialize pixi environment and download tools (auto-runs with orchestrate) |
+| 01 | **align-assemblies** | Align query assemblies to reference using AnchorWave and minimap2 |
+| 02 | **maf-to-gvcf** | Convert MAF alignments to compressed GVCF format |
+| 03 | **downsample-gvcf** | Downsample variants at specified rates per chromosome |
+| 04 | **convert-to-fasta** | Generate FASTA files from downsampled variants |
+| 05 | **align-mutated-assemblies** | Realign mutated sequences back to reference for comparison |
+| -- | **extract-chrom-ids** | Helper: Extract unique chromosome IDs from GVCF files |
 
 Each command generates logs in `<work-dir>/logs/` and outputs in `<work-dir>/output/`.
 
 ## Commands
 
+### 0. orchestrate (Recommended)
+
+**Runs the entire pipeline from a YAML configuration file with automatic environment setup.**
+
+**Usage:**
+```bash
+./gradlew run --args="orchestrate [OPTIONS]"
+```
+
+**Options:**
+- `--config`, `-c`: Path to YAML configuration file (required)
+
+**What it does:**
+1. **Auto-detects environment** - Validates if setup is needed
+2. **Automatic setup** - Runs setup-environment only if tools are missing
+3. **Sequential execution** - Runs configured steps in order
+4. **Output chaining** - Automatically passes outputs between steps
+5. **Selective execution** - Skip or rerun specific steps via `run_steps`
+
+**YAML Configuration Structure:**
+```yaml
+work_dir: "seq_sim_work"
+
+# Optional: Specify which steps to run (comment out to skip)
+run_steps:
+  - align_assemblies
+  - maf_to_gvcf
+  - downsample_gvcf
+  - convert_to_fasta
+  - align_mutated_assemblies
+
+align_assemblies:
+  ref_gff: "reference.gff"
+  ref_fasta: "reference.fa"
+  query_fasta: "queries/"
+  threads: 4
+
+maf_to_gvcf:
+  sample_name: "sample1"
+
+downsample_gvcf:
+  rates: "0.1,0.2,0.3"
+  seed: 42
+
+convert_to_fasta:
+  missing_records_as: "asRef"
+
+align_mutated_assemblies:
+  threads: 4
+```
+
+**Example:**
+```bash
+# Full pipeline (environment setup runs automatically if needed)
+./gradlew run --args="orchestrate --config pipeline.yaml"
+
+# Rerun only last two steps (uses previous outputs)
+# Edit yaml: run_steps: [convert_to_fasta, align_mutated_assemblies]
+./gradlew run --args="orchestrate --config pipeline.yaml"
+```
+
+---
+
 ### 1. setup-environment
 
-Initializes the environment and downloads dependencies.
+Initializes the environment and downloads dependencies. **Note: This runs automatically with orchestrate!**
 
 **Usage:**
 ```bash
@@ -78,7 +168,7 @@ Initializes the environment and downloads dependencies.
 
 **Example:**
 ```bash
-./gradlew run --args="setup-environment -w /path/to/workdir"
+./gradlew run --args="setup-environment -w my_workdir"
 ```
 
 ---
@@ -96,7 +186,7 @@ Aligns multiple query assemblies to a reference genome using AnchorWave and mini
 - `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
 - `--ref-gff`, `-g`: Reference GFF file (required)
 - `--ref-fasta`, `-r`: Reference FASTA file (required)
-- `--query-fasta`, `-q`: Query input - can be:
+- `--query-fasta`, `-q`: Query input (required) - can be:
   - A single FASTA file (`.fa`, `.fasta`, `.fna`)
   - A directory containing FASTA files
   - A text file (`.txt`) with one FASTA file path per line
@@ -112,35 +202,23 @@ Aligns multiple query assemblies to a reference genome using AnchorWave and mini
 4. Generates `maf_file_paths.txt` listing all produced MAF files
 
 **Output:**
-- `<work-dir>/output/01_anchorwave_results/{refBase}_cds.fa` - Extracted CDS sequences
-- `<work-dir>/output/01_anchorwave_results/{refBase}.sam` - Reference alignment
-- `<work-dir>/output/01_anchorwave_results/{queryName}/` - Query-specific directory containing:
-  - `{queryName}.sam` - Query alignment
-  - `{refBase}_R1_{queryName}_Q1.anchors` - Anchor points
-  - `{refBase}_R1_{queryName}_Q1.maf` - MAF alignment
-  - `{refBase}_R1_{queryName}_Q1.f.maf` - Filtered MAF alignment
-- `<work-dir>/output/01_anchorwave_results/maf_file_paths.txt` - List of MAF file paths
+- `<work-dir>/output/01_anchorwave_results/{refBase}_cds.fa`
+- `<work-dir>/output/01_anchorwave_results/{refBase}.sam`
+- `<work-dir>/output/01_anchorwave_results/{queryName}/` containing:
+  - `{queryName}.sam`
+  - `*.anchors`, `*.maf`, `*.f.maf`
+- `<work-dir>/output/01_anchorwave_results/maf_file_paths.txt`
 - `<work-dir>/logs/01_align_assemblies.log`
 
 **Examples:**
-
-Single query file:
 ```bash
-./gradlew run --args="align-assemblies --ref-gff ref.gff --ref-fasta ref.fa --query-fasta query1.fa --threads 4"
-```
+# Single query with threads
+./gradlew run --args="align-assemblies -g ref.gff -r ref.fa -q query1.fa -t 8"
 
-Directory of query files:
-```bash
-./gradlew run --args="align-assemblies -g ref.gff -r ref.fa -q queries/ -t 8"
-```
+# Directory of queries
+./gradlew run --args="align-assemblies -g ref.gff -r ref.fa -q queries/"
 
-Text file with query paths:
-```bash
-# queries.txt contains:
-# /path/to/query1.fa
-# /path/to/query2.fa
-# /path/to/query3.fa
-
+# Text list of query paths
 ./gradlew run --args="align-assemblies -g ref.gff -r ref.fa -q queries.txt -t 4"
 ```
 
@@ -158,7 +236,7 @@ Converts MAF alignment files to compressed GVCF format using biokotlin-tools.
 **Options:**
 - `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
 - `--reference-file`, `-r`: Reference FASTA file (required)
-- `--maf-file`, `-m`: MAF input - can be:
+- `--maf-file`, `-m`: MAF input (required) - can be:
   - A single MAF file (`.maf`)
   - A directory containing MAF files
   - A text file (`.txt`) with one MAF file path per line
@@ -170,59 +248,213 @@ Converts MAF alignment files to compressed GVCF format using biokotlin-tools.
 2. For each MAF file:
    - Runs `biokotlin-tools maf-to-gvcf-converter` through pixi (ensures Java 21)
    - Generates compressed GVCF file (`.g.vcf.gz`)
-   - Uses sample name from parameter or MAF file base name
 3. Generates `gvcf_file_paths.txt` listing all produced GVCF files
 
 **Output:**
-- `<work-dir>/output/02_gvcf_results/{sampleName}.g.vcf.gz` - Compressed GVCF files
-- `<work-dir>/output/02_gvcf_results/gvcf_file_paths.txt` - List of GVCF file paths
+- `<work-dir>/output/02_gvcf_results/*.g.vcf.gz`
+- `<work-dir>/output/02_gvcf_results/gvcf_file_paths.txt`
 - `<work-dir>/logs/02_maf_to_gvcf.log`
 
 **Examples:**
-
-Single MAF file:
 ```bash
-./gradlew run --args="maf-to-gvcf --reference-file ref.fa --maf-file sample.maf --sample-name Sample1"
-```
-
-Directory of MAF files:
-```bash
-./gradlew run --args="maf-to-gvcf -r ref.fa -m seq_sim_work/output/01_anchorwave_results/"
-```
-
-Text file with MAF paths (recommended):
-```bash
+# Using path list from align-assemblies (recommended)
 ./gradlew run --args="maf-to-gvcf -r ref.fa -m seq_sim_work/output/01_anchorwave_results/maf_file_paths.txt"
+
+# Directory of MAF files
+./gradlew run --args="maf-to-gvcf -r ref.fa -m mafs/"
+
+# Single MAF with custom name
+./gradlew run --args="maf-to-gvcf -r ref.fa -m sample.maf -s Sample1"
 ```
 
-Custom output file (single MAF only):
+---
+
+### 4. downsample-gvcf
+
+Downsamples GVCF files at specified rates using MLImpute's DownsampleGvcf tool.
+
+**Usage:**
 ```bash
-./gradlew run --args="maf-to-gvcf -r ref.fa -m sample.maf -o custom_name.g.vcf.gz -s MySample"
+./gradlew run --args="downsample-gvcf [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--gvcf-dir`, `-g`: Input directory containing GVCF files (required)
+- `--ignore-contig`: Comma-separated contig patterns to ignore (optional)
+- `--rates`: Comma-separated downsampling rates per chromosome (default: "0.01,0.05,0.1,0.15,0.2,0.3,0.35,0.4,0.45,0.49")
+- `--seed`: Random seed for reproducibility (optional)
+- `--keep-ref`: Keep reference blocks (default: true)
+- `--min-ref-block-size`: Minimum ref block size to sample (default: 20)
+- `--keep-uncompressed`: Keep temporary uncompressed files (default: false)
+
+**What it does:**
+- Automatically handles compressed (`.g.vcf.gz`) and uncompressed formats
+- Runs MLImpute DownsampleGvcf to downsample variants
+- Generates block size information
+- Cleans up temporary files automatically
+
+**Output:**
+- `<work-dir>/output/03_downsample_results/*_subsampled.gvcf`
+- `<work-dir>/output/03_downsample_results/*_subsampled_block_sizes.tsv`
+- `<work-dir>/logs/03_downsample_gvcf.log`
+
+**Example:**
+```bash
+./gradlew run --args="downsample-gvcf -g seq_sim_work/output/02_gvcf_results/ --rates 0.1,0.2,0.3 --seed 42"
+```
+
+---
+
+### 5. convert-to-fasta
+
+Generates FASTA files from downsampled GVCF files using MLImpute's ConvertToFasta tool.
+
+**Usage:**
+```bash
+./gradlew run --args="convert-to-fasta [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--gvcf-file`, `-g`: GVCF input (required) - can be:
+  - A single GVCF file
+  - A directory containing GVCF files
+  - A text file with GVCF file paths
+- `--ref-fasta`, `-r`: Reference FASTA file (required)
+- `--missing-records-as`: How to handle missing records: `asN`, `asRef`, `asNone` (default: `asRef`)
+- `--missing-genotype-as`: How to handle missing genotypes: `asN`, `asRef`, `asNone` (default: `asN`)
+
+**What it does:**
+- Automatically handles various GVCF formats
+- Generates FASTA sequences based on variants
+- Handles missing data according to specified strategy
+- Generates `fasta_file_paths.txt` with all output paths
+
+**Output:**
+- `<work-dir>/output/04_fasta_results/*.fasta`
+- `<work-dir>/output/04_fasta_results/fasta_file_paths.txt`
+- `<work-dir>/logs/04_convert_to_fasta.log`
+
+**Example:**
+```bash
+./gradlew run --args="convert-to-fasta -r ref.fa -g seq_sim_work/output/03_downsample_results/"
+```
+
+---
+
+### 6. align-mutated-assemblies
+
+Realigns mutated FASTA files (from convert-to-fasta) back to the reference genome for comparison.
+
+**Usage:**
+```bash
+./gradlew run --args="align-mutated-assemblies [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--ref-gff`, `-g`: Reference GFF file (required)
+- `--ref-fasta`, `-r`: Reference FASTA file (required)
+- `--fasta-input`, `-f`: FASTA input (required) - can be:
+  - A single FASTA file
+  - A directory containing FASTA files
+  - A text file with FASTA file paths
+- `--threads`, `-t`: Number of threads to use (default: 1)
+
+**What it does:**
+- Uses same AnchorWave + minimap2 workflow as align-assemblies
+- Aligns mutated sequences back to reference
+- Enables comparison of original vs. mutated alignments
+- Generates `maf_file_paths.txt` with all output paths
+
+**Output:**
+- `<work-dir>/output/05_mutated_alignment_results/{refBase}_cds.fa`
+- `<work-dir>/output/05_mutated_alignment_results/{refBase}.sam`
+- `<work-dir>/output/05_mutated_alignment_results/{fastaName}/` containing alignments
+- `<work-dir>/output/05_mutated_alignment_results/maf_file_paths.txt`
+- `<work-dir>/logs/05_align_mutated_assemblies.log`
+
+**Example:**
+```bash
+./gradlew run --args="align-mutated-assemblies -g ref.gff -r ref.fa -f seq_sim_work/output/04_fasta_results/ -t 8"
+```
+
+---
+
+### Helper: extract-chrom-ids
+
+Extracts unique chromosome IDs from GVCF files. Standalone utility, not part of main pipeline.
+
+**Usage:**
+```bash
+./gradlew run --args="extract-chrom-ids [OPTIONS]"
+```
+
+**Options:**
+- `--gvcf-file`, `-g`: GVCF input (required) - single file, directory, or text list
+- `--output-file`, `-o`: Output file path (default: `chromosome_ids.txt`)
+
+**Output:**
+- Plain text file with one chromosome ID per line (sorted)
+
+**Example:**
+```bash
+./gradlew run --args="extract-chrom-ids -g gvcf_files/ -o chroms.txt"
 ```
 
 ## Complete Workflow Example
 
+### Option 1: Using Orchestrate (Recommended)
+
 ```bash
-# 1. Build the project
+# 1. Build
 ./gradlew build
 
-# 2. Set up the environment
+# 2. Create configuration
+cat > pipeline.yaml <<EOF
+work_dir: "my_analysis"
+
+run_steps:
+  - align_assemblies
+  - maf_to_gvcf
+  - downsample_gvcf
+  - convert_to_fasta
+  - align_mutated_assemblies
+
+align_assemblies:
+  ref_gff: "reference.gff"
+  ref_fasta: "reference.fa"
+  query_fasta: "queries/"
+  threads: 8
+
+maf_to_gvcf:
+  sample_name: "sample1"
+
+downsample_gvcf:
+  rates: "0.1,0.2,0.3"
+  seed: 42
+
+convert_to_fasta: {}
+
+align_mutated_assemblies:
+  threads: 8
+EOF
+
+# 3. Run entire pipeline (automatic setup!)
+./gradlew run --args="orchestrate --config pipeline.yaml"
+```
+
+### Option 2: Manual Execution
+
+```bash
+# 1. Build
+./gradlew build
+
+# 2. Setup (only once)
 ./gradlew run --args="setup-environment -w my_work"
 
-# 3. Prepare your input files
-# - Reference: reference.fa, reference.gff
-# - Queries: query1.fa, query2.fa, query3.fa
-
-# 4. Align assemblies
-./gradlew run --args="align-assemblies -w my_work -g reference.gff -r reference.fa -q queries/ -t 8"
-
-# 5. Convert to GVCF
-./gradlew run --args="maf-to-gvcf -w my_work -r reference.fa -m my_work/output/01_anchorwave_results/maf_file_paths.txt"
-
-# 6. Your results are in:
-# - MAF files: my_work/output/01_anchorwave_results/{queryName}/*.maf
-# - GVCF files: my_work/output/02_gvcf_results/*.g.vcf.gz
-# - Logs: my_work/logs/
+# 3-7. Run each step manually (see individual command examples above)
 ```
 
 ## Working Directory Structure
@@ -230,123 +462,105 @@ Custom output file (single MAF only):
 After running the complete pipeline:
 
 ```
-seq_sim_work/                              # Working directory
-├── pixi.toml                              # Pixi configuration
-├── pixi.lock                              # Pixi lock file
-├── .pixi/                                 # Pixi environment
-├── src/                                   # Downloaded tools
-│   ├── MLImpute/                          # MLImpute repository
-│   └── biokotlin-tools/                   # biokotlin-tools binary
-├── logs/                                  # Log files
+seq_sim_work/                               # Working directory
+├── pixi.toml                               # Pixi configuration
+├── pixi.lock                               # Pixi lock file
+├── .pixi/                                  # Pixi environment
+├── src/                                    # Downloaded tools
+│   ├── MLImpute/                           # MLImpute repository
+│   └── biokotlin-tools/                    # biokotlin-tools binary
+├── logs/                                   # Log files
+│   ├── 00_orchestrate.log                  # Orchestrate log (if used)
 │   ├── 00_setup_environment.log
 │   ├── 01_align_assemblies.log
-│   └── 02_maf_to_gvcf.log
-└── output/                                # Pipeline outputs
-    ├── 01_anchorwave_results/             # Alignment results
+│   ├── 02_maf_to_gvcf.log
+│   ├── 03_downsample_gvcf.log
+│   ├── 04_convert_to_fasta.log
+│   └── 05_align_mutated_assemblies.log
+└── output/                                 # Pipeline outputs
+    ├── 01_anchorwave_results/              # Original alignments
     │   ├── {refBase}_cds.fa
     │   ├── {refBase}.sam
-    │   ├── {queryName}/                   # Per-query subdirectory
-    │   │   ├── {queryName}.sam
-    │   │   ├── *.anchors
-    │   │   ├── *.maf
-    │   │   └── *.f.maf
-    │   └── maf_file_paths.txt             # List of MAF files
-    └── 02_gvcf_results/                   # GVCF results
-        ├── *.g.vcf.gz                     # Compressed GVCF files
-        └── gvcf_file_paths.txt            # List of GVCF files
+    │   ├── {queryName}/
+    │   └── maf_file_paths.txt
+    ├── 02_gvcf_results/                    # GVCF files
+    │   ├── *.g.vcf.gz
+    │   └── gvcf_file_paths.txt
+    ├── 03_downsample_results/              # Downsampled variants
+    │   ├── *_subsampled.gvcf
+    │   └── *_subsampled_block_sizes.tsv
+    ├── 04_fasta_results/                   # Mutated FASTA files
+    │   ├── *.fasta
+    │   └── fasta_file_paths.txt
+    └── 05_mutated_alignment_results/       # Realignments
+        ├── {refBase}_cds.fa
+        ├── {refBase}.sam
+        ├── {fastaName}/
+        └── maf_file_paths.txt
 ```
 
 ## Important Notes
 
-1. **Java 21 Requirement**: The biokotlin-tools app requires Java 21. The maf-to-gvcf command automatically runs it through pixi to ensure the correct Java version is used.
+1. **Automatic Environment Setup**: When using `orchestrate`, environment setup runs automatically if tools are missing. No manual setup needed!
 
-2. **AnchorWave on macOS**: AnchorWave is not available on macOS via conda. For macOS users, the align-assemblies command will not work. Use a Linux system or Docker container for the alignment step.
+2. **Java 21 Requirement**: biokotlin-tools requires Java 21. Commands automatically run it through pixi to ensure the correct version.
 
-3. **Multi-File Input**: Commands support three input patterns for batch processing:
+3. **AnchorWave on macOS**: AnchorWave is not available on macOS via conda. Use Linux or Docker for alignment steps.
+
+4. **Multi-File Input**: Commands support three input patterns:
    - **Single file**: Direct path to a file
-   - **Directory**: All files with matching extensions in the directory
-   - **Text list**: Plain text file with one file path per line (recommended for large batches)
+   - **Directory**: All matching files in directory
+   - **Text list**: One file path per line (recommended for large batches)
 
-4. **Path Files**: Commands generate text files (`maf_file_paths.txt`, `gvcf_file_paths.txt`) listing all output files. These are useful for:
-   - Downstream processing
-   - Input to subsequent pipeline steps
-   - Tracking which files were successfully generated
+5. **Path Files**: Commands generate text files (`*_file_paths.txt`) listing outputs. Use these for downstream processing.
 
-5. **Error Handling**: Commands continue processing remaining files if one fails, tracking success/failure counts. Check log files for detailed error information.
+6. **Selective Execution**: With orchestrate, comment out steps in `run_steps` to skip them. Useful for reruns.
 
-6. **Compressed Output**: GVCF files are automatically compressed with gzip (`.g.vcf.gz` extension) to save disk space.
+7. **Circular Workflow**: Step 5 (align-mutated-assemblies) creates a comparison loop - compare original vs. mutated alignments.
 
-## Development
-
-This project uses:
-- **Kotlin 2.2.20** with JVM target (Java 21)
-- **Clikt 5.0.3** for command-line interface
-- **Log4j2 2.24.3** for logging
-- **Gradle** with Kotlin DSL for build management
-- **pixi** for environment management with bioconda tools
-
-### Project Structure
-
-```
-src/main/kotlin/
-├── Main.kt                              # Application entry point
-├── net/maizegenetics/
-│   ├── Constants.kt                     # Shared constants
-│   ├── commands/
-│   │   ├── SetupEnvironment.kt          # 00: setup-environment command
-│   │   ├── AlignAssemblies.kt           # 01: align-assemblies command
-│   │   └── MafToGvcf.kt                 # 02: maf-to-gvcf command
-│   └── utils/
-│       ├── FileDownloader.kt            # Download and extraction utilities
-│       ├── ProcessRunner.kt             # Process execution utilities
-│       └── LoggingUtils.kt              # Centralized logging configuration
-└── resources/
-    ├── pixi.toml                        # Pixi environment configuration
-    └── log4j2.xml                       # Logging configuration
-```
-
-### Build Commands
-
-**Run tests:**
-```bash
-./gradlew test
-```
-
-**Clean build:**
-```bash
-./gradlew clean build
-```
-
-**Run a single test:**
-```bash
-./gradlew test --tests "ClassName.testMethodName"
-```
-
-**Generate JAR:**
-```bash
-./gradlew jar
-```
-
-## Possible end-user errors...
+## Troubleshooting
 
 **Issue**: `UnsupportedClassVersionError` when running maf-to-gvcf
 
-**Solution**: Ensure you have Java 21 in your pixi environment. The command should run biokotlin-tools through `pixi run` automatically.
+**Solution**: Ensure Java 21 is in your pixi environment. Commands run biokotlin-tools through `pixi run` automatically.
 
 ---
 
 **Issue**: No MAF files generated by align-assemblies
 
-**Solution**: Check that:
-1. AnchorWave is available (Linux only)
-2. Input files have correct extensions (`.fa`, `.fasta`, `.fna`)
-3. Reference GFF and FASTA files are valid
-4. Check `logs/01_align_assemblies.log` for detailed error messages
+**Solution**:
+1. AnchorWave is Linux-only
+2. Check input file extensions (`.fa`, `.fasta`, `.fna`)
+3. Validate reference GFF and FASTA
+4. Check `logs/01_align_assemblies.log`
 
 ---
 
-**Issue**: Permission denied when running commands
+**Issue**: Orchestrate fails with "environment validation failed"
 
-**Solution**: Ensure the working directory is writable and you have permissions to execute pixi and other tools.
+**Solution**: Ensure pixi is installed and accessible. Check logs for specific missing tools.
 
+---
+
+**Issue**: Permission denied errors
+
+**Solution**: Ensure working directory is writable and you have execute permissions.
+
+## Development
+
+- **Language:** Kotlin 2.2.20 (JVM target: Java 21)
+- **CLI Framework:** Clikt 5.0.3
+- **Logging:** Log4j2 2.24.3
+- **YAML Parser:** SnakeYAML 2.3
+- **Build Tool:** Gradle with Kotlin DSL
+- **Environment Manager:** pixi (conda-based)
+
+### Build Commands
+
+```bash
+./gradlew build          # Build project
+./gradlew test           # Run tests
+./gradlew clean build    # Clean build
+./gradlew jar            # Generate JAR
+```
 

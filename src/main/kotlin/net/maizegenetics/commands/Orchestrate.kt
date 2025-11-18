@@ -26,7 +26,11 @@ data class PipelineConfig(
     val maf_to_gvcf: MafToGvcfConfig? = null,
     val downsample_gvcf: DownsampleGvcfConfig? = null,
     val convert_to_fasta: ConvertToFastaConfig? = null,
-    val align_mutated_assemblies: AlignMutatedAssembliesConfig? = null
+    val align_mutated_assemblies: AlignMutatedAssembliesConfig? = null,
+    val pick_crossovers: PickCrossoversConfig? = null,
+    val create_chain_files: CreateChainFilesConfig? = null,
+    val convert_coordinates: ConvertCoordinatesConfig? = null,
+    val generate_recombined_sequences: GenerateRecombinedSequencesConfig? = null
 )
 
 data class AlignAssembliesConfig(
@@ -55,6 +59,24 @@ data class ConvertToFastaConfig(
 
 data class AlignMutatedAssembliesConfig(
     val threads: Int? = null
+)
+
+data class PickCrossoversConfig(
+    val assembly_list: String
+)
+
+data class CreateChainFilesConfig(
+    val jobs: Int? = null
+)
+
+data class ConvertCoordinatesConfig(
+    val assembly_list: String
+)
+
+data class GenerateRecombinedSequencesConfig(
+    val assembly_list: String,
+    val chromosome_list: String,
+    val assembly_dir: String
 )
 
 class Orchestrate : CliktCommand(name = "orchestrate") {
@@ -203,6 +225,44 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 )
             }
 
+            // Parse pick_crossovers
+            @Suppress("UNCHECKED_CAST")
+            val pickCrossoversMap = configMap["pick_crossovers"] as? Map<String, Any>
+            val pickCrossovers = pickCrossoversMap?.let {
+                PickCrossoversConfig(
+                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("pick_crossovers.assembly_list is required")
+                )
+            }
+
+            // Parse create_chain_files
+            @Suppress("UNCHECKED_CAST")
+            val createChainFilesMap = configMap["create_chain_files"] as? Map<String, Any>
+            val createChainFiles = createChainFilesMap?.let {
+                CreateChainFilesConfig(
+                    jobs = it["jobs"] as? Int
+                )
+            }
+
+            // Parse convert_coordinates
+            @Suppress("UNCHECKED_CAST")
+            val convertCoordinatesMap = configMap["convert_coordinates"] as? Map<String, Any>
+            val convertCoordinates = convertCoordinatesMap?.let {
+                ConvertCoordinatesConfig(
+                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("convert_coordinates.assembly_list is required")
+                )
+            }
+
+            // Parse generate_recombined_sequences
+            @Suppress("UNCHECKED_CAST")
+            val generateRecombinedSequencesMap = configMap["generate_recombined_sequences"] as? Map<String, Any>
+            val generateRecombinedSequences = generateRecombinedSequencesMap?.let {
+                GenerateRecombinedSequencesConfig(
+                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.assembly_list is required"),
+                    chromosome_list = it["chromosome_list"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.chromosome_list is required"),
+                    assembly_dir = it["assembly_dir"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.assembly_dir is required")
+                )
+            }
+
             return PipelineConfig(
                 work_dir = workDir,
                 run_steps = runSteps,
@@ -210,7 +270,11 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 maf_to_gvcf = mafToGvcf,
                 downsample_gvcf = downsampleGvcf,
                 convert_to_fasta = convertToFasta,
-                align_mutated_assemblies = alignMutatedAssemblies
+                align_mutated_assemblies = alignMutatedAssemblies,
+                pick_crossovers = pickCrossovers,
+                create_chain_files = createChainFiles,
+                convert_coordinates = convertCoordinates,
+                generate_recombined_sequences = generateRecombinedSequences
             )
         } catch (e: Exception) {
             logger.error("Failed to parse configuration file: ${e.message}", e)
@@ -262,6 +326,10 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
         var fastaOutputDir: Path? = null
         var refFasta: Path? = null
         var refGff: Path? = null
+        var refkeyOutputDir: Path? = null
+        var chainOutputDir: Path? = null
+        var coordinatesOutputDir: Path? = null
+        var recombinedFastasDir: Path? = null
 
         try {
             // Step 1: Align Assemblies (if configured and should run)
@@ -562,6 +630,229 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     logger.info("Skipping align-mutated-assemblies (not in run_steps)")
                 } else {
                     logger.info("Skipping align-mutated-assemblies (not configured)")
+                }
+                logger.info("")
+            }
+
+            // Step 6: Pick Crossovers (if configured and should run)
+            if (config.pick_crossovers != null && shouldRunStep("pick_crossovers", config)) {
+                logger.info("=".repeat(80))
+                logger.info("STEP 6: Pick Crossovers")
+                logger.info("=".repeat(80))
+
+                if (refFasta == null) {
+                    throw RuntimeException("Cannot run pick-crossovers: reference FASTA not available")
+                }
+
+                val args = buildList {
+                    add("pick-crossovers")
+                    add("--work-dir=${workDir}")
+                    add("--ref-fasta=${refFasta}")
+                    add("--assembly-list=${config.pick_crossovers.assembly_list}")
+                }
+
+                val exitCode = ProcessRunner.runCommand(
+                    "./gradlew", "run", "--args=${args.joinToString(" ")}",
+                    workingDir = File("."),
+                    logger = logger
+                )
+
+                if (exitCode != 0) {
+                    throw RuntimeException("pick-crossovers failed with exit code $exitCode")
+                }
+
+                // Get output directory
+                refkeyOutputDir = workDir.resolve("output").resolve("06_crossovers_results")
+
+                if (!refkeyOutputDir.exists()) {
+                    throw RuntimeException("Expected refkey output directory not found: $refkeyOutputDir")
+                }
+
+                logger.info("Step 6 completed successfully")
+                logger.info("")
+            } else {
+                if (config.pick_crossovers != null) {
+                    logger.info("Skipping pick-crossovers (not in run_steps)")
+
+                    // Try to use outputs from previous run
+                    val previousRefkeyDir = workDir.resolve("output").resolve("06_crossovers_results")
+                    if (previousRefkeyDir.exists()) {
+                        refkeyOutputDir = previousRefkeyDir
+                        logger.info("Using previous pick-crossovers outputs: $refkeyOutputDir")
+                    } else {
+                        logger.warn("Previous pick-crossovers outputs not found. Downstream steps may fail.")
+                    }
+                } else {
+                    logger.info("Skipping pick-crossovers (not configured)")
+                }
+                logger.info("")
+            }
+
+            // Step 7: Create Chain Files (if configured and should run)
+            if (config.create_chain_files != null && shouldRunStep("create_chain_files", config)) {
+                logger.info("=".repeat(80))
+                logger.info("STEP 7: Create Chain Files")
+                logger.info("=".repeat(80))
+
+                if (mafFilePaths == null) {
+                    throw RuntimeException("Cannot run create-chain-files: align-assemblies output not available")
+                }
+
+                val args = buildList {
+                    add("create-chain-files")
+                    add("--work-dir=${workDir}")
+                    add("--maf-input=${mafFilePaths}")
+                    if (config.create_chain_files.jobs != null) {
+                        add("--jobs=${config.create_chain_files.jobs}")
+                    }
+                }
+
+                val exitCode = ProcessRunner.runCommand(
+                    "./gradlew", "run", "--args=${args.joinToString(" ")}",
+                    workingDir = File("."),
+                    logger = logger
+                )
+
+                if (exitCode != 0) {
+                    throw RuntimeException("create-chain-files failed with exit code $exitCode")
+                }
+
+                // Get output directory
+                chainOutputDir = workDir.resolve("output").resolve("07_chain_results")
+
+                if (!chainOutputDir.exists()) {
+                    throw RuntimeException("Expected chain output directory not found: $chainOutputDir")
+                }
+
+                logger.info("Step 7 completed successfully")
+                logger.info("")
+            } else {
+                if (config.create_chain_files != null) {
+                    logger.info("Skipping create-chain-files (not in run_steps)")
+
+                    // Try to use outputs from previous run
+                    val previousChainDir = workDir.resolve("output").resolve("07_chain_results")
+                    if (previousChainDir.exists()) {
+                        chainOutputDir = previousChainDir
+                        logger.info("Using previous create-chain-files outputs: $chainOutputDir")
+                    } else {
+                        logger.warn("Previous create-chain-files outputs not found. Downstream steps may fail.")
+                    }
+                } else {
+                    logger.info("Skipping create-chain-files (not configured)")
+                }
+                logger.info("")
+            }
+
+            // Step 8: Convert Coordinates (if configured and should run)
+            if (config.convert_coordinates != null && shouldRunStep("convert_coordinates", config)) {
+                logger.info("=".repeat(80))
+                logger.info("STEP 8: Convert Coordinates")
+                logger.info("=".repeat(80))
+
+                if (chainOutputDir == null) {
+                    throw RuntimeException("Cannot run convert-coordinates: create-chain-files output not available")
+                }
+
+                val args = buildList {
+                    add("convert-coordinates")
+                    add("--work-dir=${workDir}")
+                    add("--assembly-list=${config.convert_coordinates.assembly_list}")
+                    add("--chain-dir=${chainOutputDir}")
+                    if (refkeyOutputDir != null) {
+                        add("--refkey-dir=${refkeyOutputDir}")
+                    }
+                }
+
+                val exitCode = ProcessRunner.runCommand(
+                    "./gradlew", "run", "--args=${args.joinToString(" ")}",
+                    workingDir = File("."),
+                    logger = logger
+                )
+
+                if (exitCode != 0) {
+                    throw RuntimeException("convert-coordinates failed with exit code $exitCode")
+                }
+
+                // Get output directory
+                coordinatesOutputDir = workDir.resolve("output").resolve("08_coordinates_results")
+
+                if (!coordinatesOutputDir.exists()) {
+                    throw RuntimeException("Expected coordinates output directory not found: $coordinatesOutputDir")
+                }
+
+                logger.info("Step 8 completed successfully")
+                logger.info("")
+            } else {
+                if (config.convert_coordinates != null) {
+                    logger.info("Skipping convert-coordinates (not in run_steps)")
+
+                    // Try to use outputs from previous run
+                    val previousCoordsDir = workDir.resolve("output").resolve("08_coordinates_results")
+                    if (previousCoordsDir.exists()) {
+                        coordinatesOutputDir = previousCoordsDir
+                        logger.info("Using previous convert-coordinates outputs: $coordinatesOutputDir")
+                    } else {
+                        logger.warn("Previous convert-coordinates outputs not found. Downstream steps may fail.")
+                    }
+                } else {
+                    logger.info("Skipping convert-coordinates (not configured)")
+                }
+                logger.info("")
+            }
+
+            // Step 9: Generate Recombined Sequences (if configured and should run)
+            if (config.generate_recombined_sequences != null && shouldRunStep("generate_recombined_sequences", config)) {
+                logger.info("=".repeat(80))
+                logger.info("STEP 9: Generate Recombined Sequences")
+                logger.info("=".repeat(80))
+
+                if (coordinatesOutputDir == null) {
+                    throw RuntimeException("Cannot run generate-recombined-sequences: convert-coordinates output not available")
+                }
+
+                val args = buildList {
+                    add("generate-recombined-sequences")
+                    add("--work-dir=${workDir}")
+                    add("--assembly-list=${config.generate_recombined_sequences.assembly_list}")
+                    add("--chromosome-list=${config.generate_recombined_sequences.chromosome_list}")
+                    add("--assembly-dir=${config.generate_recombined_sequences.assembly_dir}")
+                    add("--founder-key-dir=${coordinatesOutputDir}")
+                }
+
+                val exitCode = ProcessRunner.runCommand(
+                    "./gradlew", "run", "--args=${args.joinToString(" ")}",
+                    workingDir = File("."),
+                    logger = logger
+                )
+
+                if (exitCode != 0) {
+                    throw RuntimeException("generate-recombined-sequences failed with exit code $exitCode")
+                }
+
+                // Get output directory
+                recombinedFastasDir = workDir.resolve("output")
+                    .resolve("09_recombined_sequences")
+                    .resolve("recombinate_fastas")
+
+                logger.info("Step 9 completed successfully")
+                logger.info("")
+            } else {
+                if (config.generate_recombined_sequences != null) {
+                    logger.info("Skipping generate-recombined-sequences (not in run_steps)")
+
+                    // Try to use outputs from previous run
+                    val previousRecombinedDir = workDir.resolve("output")
+                        .resolve("09_recombined_sequences")
+                        .resolve("recombinate_fastas")
+                    if (previousRecombinedDir.exists()) {
+                        recombinedFastasDir = previousRecombinedDir
+                        logger.info("Using previous generate-recombined-sequences outputs: $recombinedFastasDir")
+                    } else {
+                        logger.warn("Previous generate-recombined-sequences outputs not found.")
+                    }
+                } else {
+                    logger.info("Skipping generate-recombined-sequences (not configured)")
                 }
                 logger.info("")
             }

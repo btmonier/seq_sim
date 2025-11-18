@@ -57,7 +57,9 @@ The orchestrate command automatically:
 
 ## Pipeline Overview
 
-The pipeline consists of six commands:
+The pipeline consists of two main workflows:
+
+### Variant Simulation Workflow (Steps 01-05)
 
 | Step | Command | Description |
 |------|---------|-------------|
@@ -67,7 +69,21 @@ The pipeline consists of six commands:
 | 03 | **downsample-gvcf** | Downsample variants at specified rates per chromosome |
 | 04 | **convert-to-fasta** | Generate FASTA files from downsampled variants |
 | 05 | **align-mutated-assemblies** | Realign mutated sequences back to reference for comparison |
-| -- | **extract-chrom-ids** | Helper: Extract unique chromosome IDs from GVCF files |
+
+### Recombination Workflow (Steps 06-09)
+
+| Step | Command | Description |
+|------|---------|-------------|
+| 06 | **pick-crossovers** | Generate crossover points and create ancestry tracking BED files |
+| 07 | **create-chain-files** | Convert MAF alignments to CHAIN format for coordinate transformations |
+| 08 | **convert-coordinates** | Convert reference coordinates to assembly coordinates using chain files |
+| 09 | **generate-recombined-sequences** | Generate recombined FASTA sequences from parent assemblies |
+
+### Helper Commands
+
+| Command | Description |
+|---------|-------------|
+| **extract-chrom-ids** | Extract unique chromosome IDs from GVCF files |
 
 Each command generates logs in `<work-dir>/logs/` and outputs in `<work-dir>/output/`.
 
@@ -93,6 +109,8 @@ Each command generates logs in `<work-dir>/logs/` and outputs in `<work-dir>/out
 5. **Selective execution** - Skip or rerun specific steps via `run_steps`
 
 **YAML Configuration Structure:**
+
+*Variant Simulation Workflow:*
 ```yaml
 work_dir: "seq_sim_work"
 
@@ -122,6 +140,38 @@ convert_to_fasta:
 
 align_mutated_assemblies:
   threads: 4
+```
+
+*Recombination Workflow:*
+```yaml
+work_dir: "seq_sim_work"
+
+run_steps:
+  - align_assemblies
+  - pick_crossovers
+  - create_chain_files
+  - convert_coordinates
+  - generate_recombined_sequences
+
+align_assemblies:
+  ref_gff: "reference.gff"
+  ref_fasta: "reference.fa"
+  query_fasta: "assemblies/"
+  threads: 8
+
+pick_crossovers:
+  assembly_list: "assembly_list.txt"
+
+create_chain_files:
+  jobs: 12
+
+convert_coordinates:
+  assembly_list: "assembly_list.txt"
+
+generate_recombined_sequences:
+  assembly_list: "assembly_list.txt"
+  chromosome_list: "chromosomes.txt"
+  assembly_dir: "assemblies/"
 ```
 
 **Example:**
@@ -382,6 +432,159 @@ Realigns mutated FASTA files (from convert-to-fasta) back to the reference genom
 
 ---
 
+### 7. pick-crossovers
+
+Generates crossover points in reference coordinates and creates refkey BED files that track genomic region ancestry.
+
+**Usage:**
+```bash
+./gradlew run --args="pick-crossovers [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--ref-fasta`, `-r`: Reference FASTA file (required)
+- `--assembly-list`, `-a`: Text file containing assembly paths and names, tab-separated: `path<TAB>name` (required)
+
+**What it does:**
+- Simulates crossover events between parent assemblies
+- Generates crossover positions using uniform random spacing (1-9 Mbp between crossovers)
+- Creates refkey BED files tracking which founder/parent each genomic region comes from
+- Supports multiple rounds of breeding simulation
+
+**Output:**
+- `<work-dir>/output/06_crossovers_results/{founder}_refkey.bed` (reference coordinates)
+- `<work-dir>/output/06_crossovers_results/refkey_file_paths.txt`
+- `<work-dir>/logs/06_pick_crossovers.log`
+
+**Example:**
+```bash
+./gradlew run --args="pick-crossovers -r reference.fa -a assembly_list.txt"
+```
+
+**Assembly list format (assembly_list.txt):**
+```
+/path/to/assembly1.fa	assembly1
+/path/to/assembly2.fa	assembly2
+```
+
+---
+
+### 8. create-chain-files
+
+Converts MAF alignment files to CHAIN format, which describes coordinate transformations between sequences.
+
+**Usage:**
+```bash
+./gradlew run --args="create-chain-files [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--maf-input`, `-m`: MAF input (required) - can be:
+  - A single MAF file (`.maf`, `.maf.gz`)
+  - A directory containing MAF files
+  - A text file (`.txt`) with one MAF file path per line
+- `--jobs`, `-j`: Number of parallel jobs (default: 8)
+
+**What it does:**
+- Downloads `maf-convert` tool from LAST package if missing
+- Converts each MAF file to CHAIN format using parallel processing
+- Supports both compressed (`.maf.gz`) and uncompressed (`.maf`) files
+- Chain format describes coordinate mapping between reference and query sequences
+
+**Output:**
+- `<work-dir>/output/07_chain_results/*.chain`
+- `<work-dir>/output/07_chain_results/chain_file_paths.txt`
+- `<work-dir>/logs/07_create_chain_files.log`
+
+**Examples:**
+```bash
+# Using MAF paths from align-assemblies (recommended)
+./gradlew run --args="create-chain-files -m seq_sim_work/output/01_anchorwave_results/maf_file_paths.txt -j 12"
+
+# Directory of MAF files
+./gradlew run --args="create-chain-files -m mafs/ -j 8"
+```
+
+---
+
+### 9. convert-coordinates
+
+Converts reference coordinates from refkey BED files to assembly coordinates using chain files.
+
+**Usage:**
+```bash
+./gradlew run --args="convert-coordinates [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--assembly-list`, `-a`: Text file containing assembly paths and names, tab-separated (required)
+- `--chain-dir`, `-c`: Directory containing chain files (required)
+- `--refkey-dir`, `-r`: Directory containing refkey BED files (optional, auto-detected from step 06)
+
+**What it does:**
+- Reads refkey BED files with reference coordinates
+- Uses CrossMap tool with chain files to convert coordinates
+- Adjusts per-chromosome to ensure complete coverage (no gaps or overlaps)
+- Generates both assembly-specific and founder-specific key files
+
+**Output:**
+- `<work-dir>/output/08_coordinates_results/{assembly}_key.bed` (assembly coordinates)
+- `<work-dir>/output/08_coordinates_results/{founder}_key.bed` (FASTA coordinates)
+- `<work-dir>/output/08_coordinates_results/key_file_paths.txt`
+- `<work-dir>/output/08_coordinates_results/founder_key_file_paths.txt`
+- `<work-dir>/logs/08_convert_coordinates.log`
+
+**Example:**
+```bash
+./gradlew run --args="convert-coordinates -a assembly_list.txt -c seq_sim_work/output/07_chain_results/"
+```
+
+---
+
+### 10. generate-recombined-sequences
+
+Generates recombined FASTA sequences by concatenating segments from parent assemblies based on founder keyfiles.
+
+**Usage:**
+```bash
+./gradlew run --args="generate-recombined-sequences [OPTIONS]"
+```
+
+**Options:**
+- `--work-dir`, `-w`: Working directory (default: `seq_sim_work`)
+- `--assembly-list`, `-a`: Text file containing assembly paths and names, tab-separated (required)
+- `--chromosome-list`, `-c`: Text file containing chromosome names, one per line (required)
+- `--assembly-dir`, `-d`: Directory containing parent assembly FASTA files (required)
+- `--founder-key-dir`, `-k`: Directory containing founder key BED files (optional, auto-detected from step 08)
+
+**What it does:**
+- Reads founder key BED files that map FASTA coordinates to parent assemblies
+- For each founder and chromosome, fetches sequences from appropriate parent assemblies
+- Concatenates segments in genomic order to create recombined sequences
+- Uses pysam for efficient sequence retrieval and multiprocessing for parallelization
+
+**Output:**
+- `<work-dir>/output/09_recombined_sequences/recombinate_fastas/{founder}.fa`
+- `<work-dir>/output/09_recombined_sequences/recombined_fasta_paths.txt`
+- `<work-dir>/logs/09_generate_recombined_sequences.log`
+
+**Example:**
+```bash
+./gradlew run --args="generate-recombined-sequences -a assembly_list.txt -c chromosomes.txt -d data/assemblies/"
+```
+
+**Chromosome list format (chromosomes.txt):**
+```
+chr1
+chr2
+chr3
+```
+
+---
+
 ### Helper: extract-chrom-ids
 
 Extracts unique chromosome IDs from GVCF files. Standalone utility, not part of main pipeline.
@@ -403,9 +606,11 @@ Extracts unique chromosome IDs from GVCF files. Standalone utility, not part of 
 ./gradlew run --args="extract-chrom-ids -g gvcf_files/ -o chroms.txt"
 ```
 
-## Complete Workflow Example
+## Complete Workflow Examples
 
-### Option 1: Using Orchestrate (Recommended)
+### Variant Simulation Workflow
+
+#### Option 1: Using Orchestrate (Recommended)
 
 ```bash
 # 1. Build
@@ -445,7 +650,7 @@ EOF
 ./gradlew run --args="orchestrate --config pipeline.yaml"
 ```
 
-### Option 2: Manual Execution
+#### Option 2: Manual Execution
 
 ```bash
 # 1. Build
@@ -457,46 +662,157 @@ EOF
 # 3-7. Run each step manually (see individual command examples above)
 ```
 
+---
+
+### Recombination Workflow
+
+The recombination workflow generates recombined sequences by simulating crossover events and combining segments from multiple parent assemblies.
+
+#### Using Orchestrate (Recommended)
+
+```bash
+# 1. Build
+./gradlew build
+
+# 2. Prepare input files
+# - assembly_list.txt (tab-separated: /path/to/assembly.fa<TAB>name)
+# - chromosomes.txt (one chromosome name per line)
+
+# 3. Create recombination configuration
+cat > recombination.yaml <<EOF
+work_dir: "recomb_analysis"
+
+run_steps:
+  - align_assemblies
+  - pick_crossovers
+  - create_chain_files
+  - convert_coordinates
+  - generate_recombined_sequences
+
+align_assemblies:
+  ref_gff: "data/reference.gff"
+  ref_fasta: "data/reference.fa"
+  query_fasta: "data/assemblies.txt"
+  threads: 8
+
+pick_crossovers:
+  assembly_list: "data/assembly_list.txt"
+
+create_chain_files:
+  jobs: 12
+
+convert_coordinates:
+  assembly_list: "data/assembly_list.txt"
+
+generate_recombined_sequences:
+  assembly_list: "data/assembly_list.txt"
+  chromosome_list: "data/chromosomes.txt"
+  assembly_dir: "data/assemblies/"
+EOF
+
+# 4. Run entire recombination pipeline
+./gradlew run --args="orchestrate --config recombination.yaml"
+```
+
+#### Manual Execution
+
+```bash
+# 1. Build
+./gradlew build
+
+# 2. Setup (only once)
+./gradlew run --args="setup-environment"
+
+# 3. Align assemblies to reference
+./gradlew run --args="align-assemblies -g ref.gff -r ref.fa -q assemblies.txt -t 8"
+
+# 4. Pick crossover points
+./gradlew run --args="pick-crossovers -r ref.fa -a assembly_list.txt"
+
+# 5. Create chain files from MAF alignments
+./gradlew run --args="create-chain-files -m seq_sim_work/output/01_anchorwave_results/maf_file_paths.txt -j 12"
+
+# 6. Convert coordinates
+./gradlew run --args="convert-coordinates -a assembly_list.txt -c seq_sim_work/output/07_chain_results/"
+
+# 7. Generate recombined sequences
+./gradlew run --args="generate-recombined-sequences -a assembly_list.txt -c chromosomes.txt -d data/assemblies/"
+```
+
+**Data Flow:**
+```
+align-assemblies -> MAF files
+                    |
+              pick-crossovers -> refkey BED files (reference coords)
+                    |
+              create-chain-files -> CHAIN files
+                    |
+              convert-coordinates (uses refkey + chain)
+                    |
+              founder key BED files (FASTA coords)
+                    |
+        generate-recombined-sequences → Recombined FASTA files
+```
+
 ## Working Directory Structure
 
 After running the complete pipeline:
 
 ```
-seq_sim_work/                               # Working directory
-├── pixi.toml                               # Pixi configuration
-├── pixi.lock                               # Pixi lock file
-├── .pixi/                                  # Pixi environment
-├── src/                                    # Downloaded tools
-│   ├── MLImpute/                           # MLImpute repository
-│   └── biokotlin-tools/                    # biokotlin-tools binary
-├── logs/                                   # Log files
-│   ├── 00_orchestrate.log                  # Orchestrate log (if used)
+seq_sim_work/                                    # Working directory
+├── pixi.toml                                    # Pixi configuration
+├── pixi.lock                                    # Pixi lock file
+├── .pixi/                                       # Pixi environment
+├── src/                                         # Downloaded tools
+│   ├── MLImpute/                                # MLImpute repository
+│   └── biokotlin-tools/                         # biokotlin-tools binary
+├── logs/                                        # Log files
+│   ├── 00_orchestrate.log                       # Orchestrate log (if used)
 │   ├── 00_setup_environment.log
 │   ├── 01_align_assemblies.log
 │   ├── 02_maf_to_gvcf.log
 │   ├── 03_downsample_gvcf.log
 │   ├── 04_convert_to_fasta.log
-│   └── 05_align_mutated_assemblies.log
-└── output/                                 # Pipeline outputs
-    ├── 01_anchorwave_results/              # Original alignments
+│   ├── 05_align_mutated_assemblies.log
+│   ├── 06_pick_crossovers.log                   # Recombination workflow logs
+│   ├── 07_create_chain_files.log
+│   ├── 08_convert_coordinates.log
+│   └── 09_generate_recombined_sequences.log
+└── output/                                      # Pipeline outputs
+    ├── 01_anchorwave_results/                   # Original alignments
     │   ├── {refBase}_cds.fa
     │   ├── {refBase}.sam
     │   ├── {queryName}/
     │   └── maf_file_paths.txt
-    ├── 02_gvcf_results/                    # GVCF files
+    ├── 02_gvcf_results/                         # GVCF files
     │   ├── *.g.vcf.gz
     │   └── gvcf_file_paths.txt
-    ├── 03_downsample_results/              # Downsampled variants
+    ├── 03_downsample_results/                   # Downsampled variants
     │   ├── *_subsampled.gvcf
     │   └── *_subsampled_block_sizes.tsv
-    ├── 04_fasta_results/                   # Mutated FASTA files
+    ├── 04_fasta_results/                        # Mutated FASTA files
     │   ├── *.fasta
     │   └── fasta_file_paths.txt
-    └── 05_mutated_alignment_results/       # Realignments
-        ├── {refBase}_cds.fa
-        ├── {refBase}.sam
-        ├── {fastaName}/
-        └── maf_file_paths.txt
+    ├── 05_mutated_alignment_results/            # Realignments
+    │   ├── {refBase}_cds.fa
+    │   ├── {refBase}.sam
+    │   ├── {fastaName}/
+    │   └── maf_file_paths.txt
+    ├── 06_crossovers_results/                   # Recombination workflow outputs
+    │   ├── {founder}_refkey.bed                 # Reference coordinates
+    │   └── refkey_file_paths.txt
+    ├── 07_chain_results/                        # Coordinate transformation files
+    │   ├── *.chain
+    │   └── chain_file_paths.txt
+    ├── 08_coordinates_results/                  # Converted coordinates
+    │   ├── {assembly}_key.bed                   # Assembly coordinates
+    │   ├── {founder}_key.bed                    # FASTA coordinates
+    │   ├── key_file_paths.txt
+    │   └── founder_key_file_paths.txt
+    └── 09_recombined_sequences/                 # Recombined sequences
+        ├── recombinate_fastas/
+        │   └── {founder}.fa                     # 0.fa, 1.fa, 2.fa, etc.
+        └── recombined_fasta_paths.txt
 ```
 
 ## Important Notes

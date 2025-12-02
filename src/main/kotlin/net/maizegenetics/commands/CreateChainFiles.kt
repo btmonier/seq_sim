@@ -45,6 +45,11 @@ class CreateChainFiles : CliktCommand(name = "create-chain-files") {
     ).int()
         .default(DEFAULT_JOBS)
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/07_chain_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun collectMafFiles(): List<Path> {
         val mafFiles = mutableListOf<Path>()
 
@@ -138,8 +143,8 @@ class CreateChainFiles : CliktCommand(name = "create-chain-files") {
         val mafFiles = collectMafFiles()
         logger.info("Processing ${mafFiles.size} MAF file(s)")
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(CHAIN_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(CHAIN_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.debug("Creating output directory: $outputDir")
             outputDir.createDirectories()

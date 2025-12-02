@@ -60,6 +60,11 @@ class ConvertToFasta : CliktCommand(name = "convert-to-fasta") {
     ).choice("asN", "asRef", "asNone", ignoreCase = true)
         .default("asN")
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/04_fasta_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun collectGvcfFiles(): List<Path> {
         val gvcfFiles = mutableListOf<Path>()
 
@@ -211,8 +216,8 @@ class ConvertToFasta : CliktCommand(name = "convert-to-fasta") {
         val gvcfFiles = collectGvcfFiles()
         logger.info("Processing ${gvcfFiles.size} GVCF file(s)")
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(FASTA_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(FASTA_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.info("Creating output directory: $outputDir")
             outputDir.createDirectories()

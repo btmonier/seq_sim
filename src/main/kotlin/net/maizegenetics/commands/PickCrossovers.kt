@@ -43,6 +43,11 @@ class PickCrossovers : CliktCommand(name = "pick-crossovers") {
     ).path(mustExist = true, canBeFile = true, canBeDir = false)
         .required()
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/06_crossovers_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     override fun run() {
         // Validate working directory exists
         if (!workDir.exists()) {
@@ -74,8 +79,8 @@ class PickCrossovers : CliktCommand(name = "pick-crossovers") {
             exitProcess(1)
         }
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(CROSSOVERS_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(CROSSOVERS_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.debug("Creating output directory: $outputDir")
             outputDir.createDirectories()

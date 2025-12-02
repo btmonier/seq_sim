@@ -49,6 +49,11 @@ class FormatRecombinedFastas : CliktCommand(name = "format-recombined-fastas") {
     ).int()
         .default(DEFAULT_THREADS)
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/10_formatted_fastas)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun collectFastaFiles(): List<Path> {
         val fastaFiles = mutableListOf<Path>()
 
@@ -137,8 +142,8 @@ class FormatRecombinedFastas : CliktCommand(name = "format-recombined-fastas") {
         val fastaFiles = collectFastaFiles()
         logger.info("Processing ${fastaFiles.size} FASTA file(s)")
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(FORMATTED_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(FORMATTED_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.debug("Creating output directory: $outputDir")
             outputDir.createDirectories()

@@ -68,6 +68,11 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
     ).int()
         .default(DEFAULT_THREADS)
 
+    private val outputDir by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/01_anchorwave_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun collectQueryFiles(): List<Path> {
         val queryFiles = mutableListOf<Path>()
 
@@ -146,8 +151,8 @@ class AlignAssemblies : CliktCommand(name = "align-assemblies") {
         val queryFiles = collectQueryFiles()
         logger.info("Processing ${queryFiles.size} query file(s)")
 
-        // Create base output directory
-        val baseOutputDir = workDir.resolve(OUTPUT_DIR).resolve(ANCHORWAVE_RESULTS_DIR)
+        // Create base output directory (use custom or default)
+        val baseOutputDir = outputDir ?: workDir.resolve(OUTPUT_DIR).resolve(ANCHORWAVE_RESULTS_DIR)
         if (!baseOutputDir.exists()) {
             logger.debug("Creating output directory: $baseOutputDir")
             baseOutputDir.createDirectories()

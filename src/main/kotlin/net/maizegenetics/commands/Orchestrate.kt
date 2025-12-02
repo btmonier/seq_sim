@@ -38,11 +38,14 @@ data class AlignAssembliesConfig(
     val ref_gff: String,
     val ref_fasta: String,
     val query_fasta: String,
-    val threads: Int? = null
+    val threads: Int? = null,
+    val output: String? = null  // Custom output directory
 )
 
 data class MafToGvcfConfig(
-    val sample_name: String? = null
+    val sample_name: String? = null,
+    val input: String? = null,   // Custom MAF file/directory path
+    val output: String? = null   // Custom GVCF output directory
 )
 
 data class DownsampleGvcfConfig(
@@ -50,39 +53,55 @@ data class DownsampleGvcfConfig(
     val rates: String? = null,
     val seed: Int? = null,
     val keep_ref: Boolean? = null,
-    val min_ref_block_size: Int? = null
+    val min_ref_block_size: Int? = null,
+    val input: String? = null,   // Custom GVCF input directory
+    val output: String? = null   // Custom output directory
 )
 
 data class ConvertToFastaConfig(
     val missing_records_as: String? = null,
-    val missing_genotype_as: String? = null
+    val missing_genotype_as: String? = null,
+    val input: String? = null,   // Custom GVCF input file/directory
+    val output: String? = null   // Custom FASTA output directory
 )
 
 data class AlignMutatedAssembliesConfig(
-    val threads: Int? = null
+    val threads: Int? = null,
+    val input: String? = null,   // Custom FASTA input file/directory
+    val output: String? = null   // Custom output directory
 )
 
 data class PickCrossoversConfig(
-    val assembly_list: String
+    val assembly_list: String,
+    val output: String? = null   // Custom output directory
 )
 
 data class CreateChainFilesConfig(
-    val jobs: Int? = null
+    val jobs: Int? = null,
+    val input: String? = null,   // Custom MAF input file/directory
+    val output: String? = null   // Custom output directory
 )
 
 data class ConvertCoordinatesConfig(
-    val assembly_list: String
+    val assembly_list: String,
+    val input_chain: String? = null,   // Custom chain directory
+    val input_refkey: String? = null,  // Custom refkey directory
+    val output: String? = null         // Custom output directory
 )
 
 data class GenerateRecombinedSequencesConfig(
     val assembly_list: String,
     val chromosome_list: String,
-    val assembly_dir: String
+    val assembly_dir: String,
+    val input: String? = null,   // Custom founder key directory
+    val output: String? = null   // Custom output directory
 )
 
 data class FormatRecombinedFastasConfig(
     val line_width: Int? = null,
-    val threads: Int? = null
+    val threads: Int? = null,
+    val input: String? = null,   // Custom FASTA input file/directory
+    val output: String? = null   // Custom output directory
 )
 
 class Orchestrate : CliktCommand(name = "orchestrate") {
@@ -189,7 +208,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     ref_gff = it["ref_gff"] as? String ?: throw IllegalArgumentException("align_assemblies.ref_gff is required"),
                     ref_fasta = it["ref_fasta"] as? String ?: throw IllegalArgumentException("align_assemblies.ref_fasta is required"),
                     query_fasta = it["query_fasta"] as? String ?: throw IllegalArgumentException("align_assemblies.query_fasta is required"),
-                    threads = it["threads"] as? Int
+                    threads = it["threads"] as? Int,
+                    output = it["output"] as? String
                 )
             }
 
@@ -197,7 +217,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val mafToGvcfMap = configMap["maf_to_gvcf"] as? Map<String, Any>
             val mafToGvcf = mafToGvcfMap?.let {
                 MafToGvcfConfig(
-                    sample_name = it["sample_name"] as? String
+                    sample_name = it["sample_name"] as? String,
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -209,7 +231,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     rates = it["rates"] as? String,
                     seed = it["seed"] as? Int,
                     keep_ref = it["keep_ref"] as? Boolean,
-                    min_ref_block_size = it["min_ref_block_size"] as? Int
+                    min_ref_block_size = it["min_ref_block_size"] as? Int,
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -218,7 +242,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val convertToFasta = convertToFastaMap?.let {
                 ConvertToFastaConfig(
                     missing_records_as = it["missing_records_as"] as? String,
-                    missing_genotype_as = it["missing_genotype_as"] as? String
+                    missing_genotype_as = it["missing_genotype_as"] as? String,
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -227,7 +253,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val alignMutatedAssembliesMap = configMap["align_mutated_assemblies"] as? Map<String, Any>
             val alignMutatedAssemblies = alignMutatedAssembliesMap?.let {
                 AlignMutatedAssembliesConfig(
-                    threads = it["threads"] as? Int
+                    threads = it["threads"] as? Int,
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -236,7 +264,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val pickCrossoversMap = configMap["pick_crossovers"] as? Map<String, Any>
             val pickCrossovers = pickCrossoversMap?.let {
                 PickCrossoversConfig(
-                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("pick_crossovers.assembly_list is required")
+                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("pick_crossovers.assembly_list is required"),
+                    output = it["output"] as? String
                 )
             }
 
@@ -245,7 +274,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val createChainFilesMap = configMap["create_chain_files"] as? Map<String, Any>
             val createChainFiles = createChainFilesMap?.let {
                 CreateChainFilesConfig(
-                    jobs = it["jobs"] as? Int
+                    jobs = it["jobs"] as? Int,
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -254,7 +285,10 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val convertCoordinatesMap = configMap["convert_coordinates"] as? Map<String, Any>
             val convertCoordinates = convertCoordinatesMap?.let {
                 ConvertCoordinatesConfig(
-                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("convert_coordinates.assembly_list is required")
+                    assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("convert_coordinates.assembly_list is required"),
+                    input_chain = it["input_chain"] as? String,
+                    input_refkey = it["input_refkey"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -265,7 +299,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 GenerateRecombinedSequencesConfig(
                     assembly_list = it["assembly_list"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.assembly_list is required"),
                     chromosome_list = it["chromosome_list"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.chromosome_list is required"),
-                    assembly_dir = it["assembly_dir"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.assembly_dir is required")
+                    assembly_dir = it["assembly_dir"] as? String ?: throw IllegalArgumentException("generate_recombined_sequences.assembly_dir is required"),
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -275,7 +311,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
             val formatRecombinedFastas = formatRecombinedFastasMap?.let {
                 FormatRecombinedFastasConfig(
                     line_width = it["line_width"] as? Int,
-                    threads = it["threads"] as? Int
+                    threads = it["threads"] as? Int,
+                    input = it["input"] as? String,
+                    output = it["output"] as? String
                 )
             }
 
@@ -359,6 +397,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 refFasta = Path.of(config.align_assemblies.ref_fasta)
                 refGff = Path.of(config.align_assemblies.ref_gff)
 
+                // Determine output directory (custom or default)
+                val customOutput = config.align_assemblies.output?.let { Path.of(it) }
+
                 val args = buildList {
                     add("align-assemblies")
                     add("--work-dir=${workDir}")
@@ -367,6 +408,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     add("--query-fasta=${config.align_assemblies.query_fasta}")
                     if (config.align_assemblies.threads != null) {
                         add("--threads=${config.align_assemblies.threads}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -380,10 +424,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("align-assemblies failed with exit code $exitCode")
                 }
 
-                // Get output path
-                mafFilePaths = workDir.resolve("output")
-                    .resolve("01_anchorwave_results")
-                    .resolve("maf_file_paths.txt")
+                // Get output path (use custom or default)
+                val outputBase = customOutput ?: workDir.resolve("output").resolve("01_anchorwave_results")
+                mafFilePaths = outputBase.resolve("maf_file_paths.txt")
 
                 if (!mafFilePaths.exists()) {
                     throw RuntimeException("Expected MAF paths file not found: $mafFilePaths")
@@ -399,9 +442,11 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     // Try to use outputs from previous run
                     refFasta = Path.of(config.align_assemblies.ref_fasta)
                     refGff = Path.of(config.align_assemblies.ref_gff)
-                    val previousMafPaths = workDir.resolve("output")
-                        .resolve("01_anchorwave_results")
-                        .resolve("maf_file_paths.txt")
+                    
+                    // Check custom output location first, then default
+                    val customOutput = config.align_assemblies.output?.let { Path.of(it) }
+                    val outputBase = customOutput ?: workDir.resolve("output").resolve("01_anchorwave_results")
+                    val previousMafPaths = outputBase.resolve("maf_file_paths.txt")
 
                     if (previousMafPaths.exists()) {
                         mafFilePaths = previousMafPaths
@@ -421,20 +466,28 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 2: MAF to GVCF Conversion")
                 logger.info("=".repeat(80))
 
-                if (mafFilePaths == null) {
-                    throw RuntimeException("Cannot run maf-to-gvcf: align-assemblies output not available")
+                // Determine input (custom or from previous step)
+                val mafInput = config.maf_to_gvcf.input?.let { Path.of(it) } ?: mafFilePaths
+                if (mafInput == null) {
+                    throw RuntimeException("Cannot run maf-to-gvcf: no MAF input available (specify 'input' in config or run align-assemblies first)")
                 }
                 if (refFasta == null) {
                     throw RuntimeException("Cannot run maf-to-gvcf: reference FASTA not available")
                 }
 
+                // Determine output directory (custom or default)
+                val customOutput = config.maf_to_gvcf.output?.let { Path.of(it) }
+
                 val args = buildList {
                     add("maf-to-gvcf")
                     add("--work-dir=${workDir}")
                     add("--reference-file=${refFasta}")
-                    add("--maf-file=${mafFilePaths}")
+                    add("--maf-file=${mafInput}")
                     if (config.maf_to_gvcf.sample_name != null) {
                         add("--sample-name=${config.maf_to_gvcf.sample_name}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -448,8 +501,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("maf-to-gvcf failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                gvcfOutputDir = workDir.resolve("output").resolve("02_gvcf_results")
+                // Get output directory (use custom or default)
+                gvcfOutputDir = customOutput ?: workDir.resolve("output").resolve("02_gvcf_results")
 
                 if (!gvcfOutputDir.exists()) {
                     throw RuntimeException("Expected GVCF output directory not found: $gvcfOutputDir")
@@ -462,8 +515,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.maf_to_gvcf != null) {
                     logger.info("Skipping maf-to-gvcf (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousGvcfDir = workDir.resolve("output").resolve("02_gvcf_results")
+                    // Check custom output location first, then default
+                    val customOutput = config.maf_to_gvcf.output?.let { Path.of(it) }
+                    val previousGvcfDir = customOutput ?: workDir.resolve("output").resolve("02_gvcf_results")
                     if (previousGvcfDir.exists()) {
                         gvcfOutputDir = previousGvcfDir
                         logger.info("Using previous maf-to-gvcf outputs: $gvcfOutputDir")
@@ -482,14 +536,19 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 3: Downsample GVCF")
                 logger.info("=".repeat(80))
 
-                if (gvcfOutputDir == null) {
-                    throw RuntimeException("Cannot run downsample-gvcf: maf-to-gvcf output not available")
+                // Determine input (custom or from previous step)
+                val gvcfInput = config.downsample_gvcf.input?.let { Path.of(it) } ?: gvcfOutputDir
+                if (gvcfInput == null) {
+                    throw RuntimeException("Cannot run downsample-gvcf: no GVCF input available (specify 'input' in config or run maf-to-gvcf first)")
                 }
+
+                // Determine output directory (custom or default)
+                val customOutput = config.downsample_gvcf.output?.let { Path.of(it) }
 
                 val args = buildList {
                     add("downsample-gvcf")
                     add("--work-dir=${workDir}")
-                    add("--gvcf-dir=${gvcfOutputDir}")
+                    add("--gvcf-dir=${gvcfInput}")
                     if (config.downsample_gvcf.ignore_contig != null) {
                         add("--ignore-contig=${config.downsample_gvcf.ignore_contig}")
                     }
@@ -505,6 +564,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     if (config.downsample_gvcf.min_ref_block_size != null) {
                         add("--min-ref-block-size=${config.downsample_gvcf.min_ref_block_size}")
                     }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
+                    }
                 }
 
                 val exitCode = ProcessRunner.runCommand(
@@ -517,8 +579,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("downsample-gvcf failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                downsampledGvcfOutputDir = workDir.resolve("output").resolve("03_downsample_results")
+                // Get output directory (use custom or default)
+                downsampledGvcfOutputDir = customOutput ?: workDir.resolve("output").resolve("03_downsample_results")
 
                 if (!downsampledGvcfOutputDir.exists()) {
                     throw RuntimeException("Expected downsampled GVCF output directory not found: $downsampledGvcfOutputDir")
@@ -531,8 +593,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.downsample_gvcf != null) {
                     logger.info("Skipping downsample-gvcf (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousDownsampleDir = workDir.resolve("output").resolve("03_downsample_results")
+                    // Check custom output location first, then default
+                    val customOutput = config.downsample_gvcf.output?.let { Path.of(it) }
+                    val previousDownsampleDir = customOutput ?: workDir.resolve("output").resolve("03_downsample_results")
                     if (previousDownsampleDir.exists()) {
                         downsampledGvcfOutputDir = previousDownsampleDir
                         logger.info("Using previous downsample-gvcf outputs: $downsampledGvcfOutputDir")
@@ -551,23 +614,31 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 4: Convert to FASTA")
                 logger.info("=".repeat(80))
 
-                if (downsampledGvcfOutputDir == null) {
-                    throw RuntimeException("Cannot run convert-to-fasta: downsample-gvcf output not available")
+                // Determine input (custom or from previous step)
+                val gvcfInput = config.convert_to_fasta.input?.let { Path.of(it) } ?: downsampledGvcfOutputDir
+                if (gvcfInput == null) {
+                    throw RuntimeException("Cannot run convert-to-fasta: no GVCF input available (specify 'input' in config or run downsample-gvcf first)")
                 }
                 if (refFasta == null) {
                     throw RuntimeException("Cannot run convert-to-fasta: reference FASTA not available")
                 }
 
+                // Determine output directory (custom or default)
+                val customOutput = config.convert_to_fasta.output?.let { Path.of(it) }
+
                 val args = buildList {
                     add("convert-to-fasta")
                     add("--work-dir=${workDir}")
-                    add("--gvcf-file=${downsampledGvcfOutputDir}")
+                    add("--gvcf-file=${gvcfInput}")
                     add("--ref-fasta=${refFasta}")
                     if (config.convert_to_fasta.missing_records_as != null) {
                         add("--missing-records-as=${config.convert_to_fasta.missing_records_as}")
                     }
                     if (config.convert_to_fasta.missing_genotype_as != null) {
                         add("--missing-genotype-as=${config.convert_to_fasta.missing_genotype_as}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -581,8 +652,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("convert-to-fasta failed with exit code $exitCode")
                 }
 
-                // Get output directory for downstream use
-                fastaOutputDir = workDir.resolve("output").resolve("04_fasta_results")
+                // Get output directory for downstream use (use custom or default)
+                fastaOutputDir = customOutput ?: workDir.resolve("output").resolve("04_fasta_results")
 
                 logger.info("Step 4 completed successfully")
                 logger.info("")
@@ -590,8 +661,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.convert_to_fasta != null) {
                     logger.info("Skipping convert-to-fasta (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousFastaDir = workDir.resolve("output").resolve("04_fasta_results")
+                    // Check custom output location first, then default
+                    val customOutput = config.convert_to_fasta.output?.let { Path.of(it) }
+                    val previousFastaDir = customOutput ?: workDir.resolve("output").resolve("04_fasta_results")
                     if (previousFastaDir.exists()) {
                         fastaOutputDir = previousFastaDir
                         logger.info("Using previous convert-to-fasta outputs: $fastaOutputDir")
@@ -610,8 +682,10 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 5: Align Mutated Assemblies")
                 logger.info("=".repeat(80))
 
-                if (fastaOutputDir == null) {
-                    throw RuntimeException("Cannot run align-mutated-assemblies: convert-to-fasta output not available")
+                // Determine input (custom or from previous step)
+                val fastaInput = config.align_mutated_assemblies.input?.let { Path.of(it) } ?: fastaOutputDir
+                if (fastaInput == null) {
+                    throw RuntimeException("Cannot run align-mutated-assemblies: no FASTA input available (specify 'input' in config or run convert-to-fasta first)")
                 }
                 if (refFasta == null) {
                     throw RuntimeException("Cannot run align-mutated-assemblies: reference FASTA not available")
@@ -620,14 +694,20 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("Cannot run align-mutated-assemblies: reference GFF not available")
                 }
 
+                // Determine output directory (custom or default)
+                val customOutput = config.align_mutated_assemblies.output?.let { Path.of(it) }
+
                 val args = buildList {
                     add("align-mutated-assemblies")
                     add("--work-dir=${workDir}")
                     add("--ref-gff=${refGff}")
                     add("--ref-fasta=${refFasta}")
-                    add("--fasta-input=${fastaOutputDir}")
+                    add("--fasta-input=${fastaInput}")
                     if (config.align_mutated_assemblies.threads != null) {
                         add("--threads=${config.align_mutated_assemblies.threads}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -662,11 +742,17 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("Cannot run pick-crossovers: reference FASTA not available")
                 }
 
+                // Determine output directory (custom or default)
+                val customOutput = config.pick_crossovers.output?.let { Path.of(it) }
+
                 val args = buildList {
                     add("pick-crossovers")
                     add("--work-dir=${workDir}")
                     add("--ref-fasta=${refFasta}")
                     add("--assembly-list=${config.pick_crossovers.assembly_list}")
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
+                    }
                 }
 
                 val exitCode = ProcessRunner.runCommand(
@@ -679,8 +765,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("pick-crossovers failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                refkeyOutputDir = workDir.resolve("output").resolve("06_crossovers_results")
+                // Get output directory (use custom or default)
+                refkeyOutputDir = customOutput ?: workDir.resolve("output").resolve("06_crossovers_results")
 
                 if (!refkeyOutputDir.exists()) {
                     throw RuntimeException("Expected refkey output directory not found: $refkeyOutputDir")
@@ -692,8 +778,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.pick_crossovers != null) {
                     logger.info("Skipping pick-crossovers (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousRefkeyDir = workDir.resolve("output").resolve("06_crossovers_results")
+                    // Check custom output location first, then default
+                    val customOutput = config.pick_crossovers.output?.let { Path.of(it) }
+                    val previousRefkeyDir = customOutput ?: workDir.resolve("output").resolve("06_crossovers_results")
                     if (previousRefkeyDir.exists()) {
                         refkeyOutputDir = previousRefkeyDir
                         logger.info("Using previous pick-crossovers outputs: $refkeyOutputDir")
@@ -712,16 +799,24 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 7: Create Chain Files")
                 logger.info("=".repeat(80))
 
-                if (mafFilePaths == null) {
-                    throw RuntimeException("Cannot run create-chain-files: align-assemblies output not available")
+                // Determine input (custom or from previous step)
+                val mafInput = config.create_chain_files.input?.let { Path.of(it) } ?: mafFilePaths
+                if (mafInput == null) {
+                    throw RuntimeException("Cannot run create-chain-files: no MAF input available (specify 'input' in config or run align-assemblies first)")
                 }
+
+                // Determine output directory (custom or default)
+                val customOutput = config.create_chain_files.output?.let { Path.of(it) }
 
                 val args = buildList {
                     add("create-chain-files")
                     add("--work-dir=${workDir}")
-                    add("--maf-input=${mafFilePaths}")
+                    add("--maf-input=${mafInput}")
                     if (config.create_chain_files.jobs != null) {
                         add("--jobs=${config.create_chain_files.jobs}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -735,8 +830,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("create-chain-files failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                chainOutputDir = workDir.resolve("output").resolve("07_chain_results")
+                // Get output directory (use custom or default)
+                chainOutputDir = customOutput ?: workDir.resolve("output").resolve("07_chain_results")
 
                 if (!chainOutputDir.exists()) {
                     throw RuntimeException("Expected chain output directory not found: $chainOutputDir")
@@ -748,8 +843,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.create_chain_files != null) {
                     logger.info("Skipping create-chain-files (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousChainDir = workDir.resolve("output").resolve("07_chain_results")
+                    // Check custom output location first, then default
+                    val customOutput = config.create_chain_files.output?.let { Path.of(it) }
+                    val previousChainDir = customOutput ?: workDir.resolve("output").resolve("07_chain_results")
                     if (previousChainDir.exists()) {
                         chainOutputDir = previousChainDir
                         logger.info("Using previous create-chain-files outputs: $chainOutputDir")
@@ -768,17 +864,28 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 8: Convert Coordinates")
                 logger.info("=".repeat(80))
 
-                if (chainOutputDir == null) {
-                    throw RuntimeException("Cannot run convert-coordinates: create-chain-files output not available")
+                // Determine chain input (custom or from previous step)
+                val chainInput = config.convert_coordinates.input_chain?.let { Path.of(it) } ?: chainOutputDir
+                if (chainInput == null) {
+                    throw RuntimeException("Cannot run convert-coordinates: no chain input available (specify 'input_chain' in config or run create-chain-files first)")
                 }
+
+                // Determine refkey input (custom or from previous step)
+                val refkeyInput = config.convert_coordinates.input_refkey?.let { Path.of(it) } ?: refkeyOutputDir
+
+                // Determine output directory (custom or default)
+                val customOutput = config.convert_coordinates.output?.let { Path.of(it) }
 
                 val args = buildList {
                     add("convert-coordinates")
                     add("--work-dir=${workDir}")
                     add("--assembly-list=${config.convert_coordinates.assembly_list}")
-                    add("--chain-dir=${chainOutputDir}")
-                    if (refkeyOutputDir != null) {
-                        add("--refkey-dir=${refkeyOutputDir}")
+                    add("--chain-dir=${chainInput}")
+                    if (refkeyInput != null) {
+                        add("--refkey-dir=${refkeyInput}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -792,8 +899,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("convert-coordinates failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                coordinatesOutputDir = workDir.resolve("output").resolve("08_coordinates_results")
+                // Get output directory (use custom or default)
+                coordinatesOutputDir = customOutput ?: workDir.resolve("output").resolve("08_coordinates_results")
 
                 if (!coordinatesOutputDir.exists()) {
                     throw RuntimeException("Expected coordinates output directory not found: $coordinatesOutputDir")
@@ -805,8 +912,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.convert_coordinates != null) {
                     logger.info("Skipping convert-coordinates (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousCoordsDir = workDir.resolve("output").resolve("08_coordinates_results")
+                    // Check custom output location first, then default
+                    val customOutput = config.convert_coordinates.output?.let { Path.of(it) }
+                    val previousCoordsDir = customOutput ?: workDir.resolve("output").resolve("08_coordinates_results")
                     if (previousCoordsDir.exists()) {
                         coordinatesOutputDir = previousCoordsDir
                         logger.info("Using previous convert-coordinates outputs: $coordinatesOutputDir")
@@ -825,9 +933,14 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 9: Generate Recombined Sequences")
                 logger.info("=".repeat(80))
 
-                if (coordinatesOutputDir == null) {
-                    throw RuntimeException("Cannot run generate-recombined-sequences: convert-coordinates output not available")
+                // Determine founder key input (custom or from previous step)
+                val founderKeyInput = config.generate_recombined_sequences.input?.let { Path.of(it) } ?: coordinatesOutputDir
+                if (founderKeyInput == null) {
+                    throw RuntimeException("Cannot run generate-recombined-sequences: no founder key input available (specify 'input' in config or run convert-coordinates first)")
                 }
+
+                // Determine output directory (custom or default)
+                val customOutput = config.generate_recombined_sequences.output?.let { Path.of(it) }
 
                 val args = buildList {
                     add("generate-recombined-sequences")
@@ -835,7 +948,10 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     add("--assembly-list=${config.generate_recombined_sequences.assembly_list}")
                     add("--chromosome-list=${config.generate_recombined_sequences.chromosome_list}")
                     add("--assembly-dir=${config.generate_recombined_sequences.assembly_dir}")
-                    add("--founder-key-dir=${coordinatesOutputDir}")
+                    add("--founder-key-dir=${founderKeyInput}")
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
+                    }
                 }
 
                 val exitCode = ProcessRunner.runCommand(
@@ -848,10 +964,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("generate-recombined-sequences failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                recombinedFastasDir = workDir.resolve("output")
-                    .resolve("09_recombined_sequences")
-                    .resolve("recombinate_fastas")
+                // Get output directory (use custom or default)
+                val outputBase = customOutput ?: workDir.resolve("output").resolve("09_recombined_sequences")
+                recombinedFastasDir = outputBase.resolve("recombinate_fastas")
 
                 logger.info("Step 9 completed successfully")
                 logger.info("")
@@ -859,10 +974,10 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.generate_recombined_sequences != null) {
                     logger.info("Skipping generate-recombined-sequences (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousRecombinedDir = workDir.resolve("output")
-                        .resolve("09_recombined_sequences")
-                        .resolve("recombinate_fastas")
+                    // Check custom output location first, then default
+                    val customOutput = config.generate_recombined_sequences.output?.let { Path.of(it) }
+                    val outputBase = customOutput ?: workDir.resolve("output").resolve("09_recombined_sequences")
+                    val previousRecombinedDir = outputBase.resolve("recombinate_fastas")
                     if (previousRecombinedDir.exists()) {
                         recombinedFastasDir = previousRecombinedDir
                         logger.info("Using previous generate-recombined-sequences outputs: $recombinedFastasDir")
@@ -881,19 +996,27 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 logger.info("STEP 10: Format Recombined Fastas")
                 logger.info("=".repeat(80))
 
-                if (recombinedFastasDir == null) {
-                    throw RuntimeException("Cannot run format-recombined-fastas: generate-recombined-sequences output not available")
+                // Determine input (custom or from previous step)
+                val fastaInput = config.format_recombined_fastas.input?.let { Path.of(it) } ?: recombinedFastasDir
+                if (fastaInput == null) {
+                    throw RuntimeException("Cannot run format-recombined-fastas: no FASTA input available (specify 'input' in config or run generate-recombined-sequences first)")
                 }
+
+                // Determine output directory (custom or default)
+                val customOutput = config.format_recombined_fastas.output?.let { Path.of(it) }
 
                 val args = buildList {
                     add("format-recombined-fastas")
                     add("--work-dir=${workDir}")
-                    add("--fasta-input=${recombinedFastasDir}")
+                    add("--fasta-input=${fastaInput}")
                     if (config.format_recombined_fastas.line_width != null) {
                         add("--line-width=${config.format_recombined_fastas.line_width}")
                     }
                     if (config.format_recombined_fastas.threads != null) {
                         add("--threads=${config.format_recombined_fastas.threads}")
+                    }
+                    if (customOutput != null) {
+                        add("--output-dir=${customOutput}")
                     }
                 }
 
@@ -907,9 +1030,8 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                     throw RuntimeException("format-recombined-fastas failed with exit code $exitCode")
                 }
 
-                // Get output directory
-                formattedFastasDir = workDir.resolve("output")
-                    .resolve("10_formatted_fastas")
+                // Get output directory (use custom or default)
+                formattedFastasDir = customOutput ?: workDir.resolve("output").resolve("10_formatted_fastas")
 
                 logger.info("Step 10 completed successfully")
                 logger.info("")
@@ -917,9 +1039,9 @@ class Orchestrate : CliktCommand(name = "orchestrate") {
                 if (config.format_recombined_fastas != null) {
                     logger.info("Skipping format-recombined-fastas (not in run_steps)")
 
-                    // Try to use outputs from previous run
-                    val previousFormattedDir = workDir.resolve("output")
-                        .resolve("10_formatted_fastas")
+                    // Check custom output location first, then default
+                    val customOutput = config.format_recombined_fastas.output?.let { Path.of(it) }
+                    val previousFormattedDir = customOutput ?: workDir.resolve("output").resolve("10_formatted_fastas")
                     if (previousFormattedDir.exists()) {
                         formattedFastasDir = previousFormattedDir
                         logger.info("Using previous format-recombined-fastas outputs: $formattedFastasDir")

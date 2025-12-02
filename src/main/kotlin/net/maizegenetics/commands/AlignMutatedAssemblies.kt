@@ -68,6 +68,11 @@ class AlignMutatedAssemblies : CliktCommand(name = "align-mutated-assemblies") {
     ).int()
         .default(DEFAULT_THREADS)
 
+    private val outputDir by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/05_mutated_alignment_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun collectFastaFiles(): List<Path> {
         val fastaFiles = mutableListOf<Path>()
 
@@ -146,8 +151,8 @@ class AlignMutatedAssemblies : CliktCommand(name = "align-mutated-assemblies") {
         val fastaFiles = collectFastaFiles()
         logger.info("Processing ${fastaFiles.size} FASTA file(s)")
 
-        // Create base output directory
-        val baseOutputDir = workDir.resolve(OUTPUT_DIR).resolve(MUTATED_ALIGNMENT_RESULTS_DIR)
+        // Create base output directory (use custom or default)
+        val baseOutputDir = outputDir ?: workDir.resolve(OUTPUT_DIR).resolve(MUTATED_ALIGNMENT_RESULTS_DIR)
         if (!baseOutputDir.exists()) {
             logger.debug("Creating output directory: $baseOutputDir")
             baseOutputDir.createDirectories()

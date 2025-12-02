@@ -49,6 +49,11 @@ class ConvertCoordinates : CliktCommand(name = "convert-coordinates") {
         help = "Directory containing refkey BED files (default: automatically detect from crossovers results)"
     ).path(mustExist = false, canBeFile = false, canBeDir = true)
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/08_coordinates_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     override fun run() {
         // Validate working directory exists
         if (!workDir.exists()) {
@@ -89,8 +94,8 @@ class ConvertCoordinates : CliktCommand(name = "convert-coordinates") {
         }
         logger.info("Refkey directory: $actualRefkeyDir")
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(COORDS_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(COORDS_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.debug("Creating output directory: $outputDir")
             outputDir.createDirectories()

@@ -55,6 +55,11 @@ class GenerateRecombinedSequences : CliktCommand(name = "generate-recombined-seq
         help = "Directory containing founder key BED files (default: automatically detect from coordinates results)"
     ).path(mustExist = false, canBeFile = false, canBeDir = true)
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/09_recombined_sequences)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     override fun run() {
         // Validate working directory exists
         if (!workDir.exists()) {
@@ -106,8 +111,8 @@ class GenerateRecombinedSequences : CliktCommand(name = "generate-recombined-seq
         }
         logger.info("Found ${founderKeyFiles.size} founder key file(s)")
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(RECOMBINED_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(RECOMBINED_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.debug("Creating output directory: $outputDir")
             outputDir.createDirectories()

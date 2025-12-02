@@ -54,6 +54,11 @@ class MafToGvcf : CliktCommand(name = "maf-to-gvcf") {
         help = "Sample name to be used in the GVCF file (defaults to MAF file base name)"
     )
 
+    private val outputDirOption by option(
+        "--output-dir", "-d",
+        help = "Custom output directory (default: work_dir/output/02_gvcf_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun collectMafFiles(): List<Path> {
         val mafFiles = mutableListOf<Path>()
 
@@ -135,8 +140,8 @@ class MafToGvcf : CliktCommand(name = "maf-to-gvcf") {
             logger.warn("Output file specified but multiple MAF files provided. Output file will be auto-generated for each MAF file.")
         }
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(GVCF_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(GVCF_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.debug("Creating output directory: $outputDir")
             outputDir.createDirectories()

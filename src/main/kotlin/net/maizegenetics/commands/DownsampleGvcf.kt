@@ -72,6 +72,11 @@ class DownsampleGvcf : CliktCommand(name = "downsample-gvcf") {
         help = "Keep uncompressed .gvcf files after downsampling"
     ).flag(default = false)
 
+    private val outputDirOption by option(
+        "--output-dir", "-o",
+        help = "Custom output directory (default: work_dir/output/03_downsample_results)"
+    ).path(mustExist = false, canBeFile = false, canBeDir = true)
+
     private fun decompressGvcfFiles(inputDir: Path, tempDir: Path): List<Path> {
         val decompressedFiles = mutableListOf<Path>()
 
@@ -157,8 +162,8 @@ class DownsampleGvcf : CliktCommand(name = "downsample-gvcf") {
         logger.info("Working directory: $workDir")
         logger.info("Input directory: $gvcfInput")
 
-        // Create output directory
-        val outputDir = workDir.resolve(OUTPUT_DIR).resolve(DOWNSAMPLE_RESULTS_DIR)
+        // Create output directory (use custom or default)
+        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(DOWNSAMPLE_RESULTS_DIR)
         if (!outputDir.exists()) {
             logger.info("Creating output directory: $outputDir")
             outputDir.createDirectories()

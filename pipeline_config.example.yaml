@@ -61,12 +61,15 @@ align_assemblies:
   ref_fasta: "path/to/reference.fa"     # Required: Reference FASTA file
   query_fasta: "path/to/queries.txt"    # Required: Single query file, directory, or text list
   threads: 1                            # Optional: Number of threads (default: 1)
+  # output: "/custom/output/path/"      # Optional: Custom output directory
 
 # Step 2: MAF to GVCF Conversion
 # Converts MAF files from align_assemblies to compressed GVCF format
 # Automatically uses ref_fasta from align_assemblies and MAF output paths
 maf_to_gvcf:
   sample_name: "optional_sample_name"   # Optional: Override sample name in GVCF
+  # input: "/custom/maf/files.txt"      # Optional: Custom MAF input (file, directory, or text list)
+  # output: "/custom/gvcf/output/"      # Optional: Custom output directory
 
 # Step 3: Downsample GVCF
 # Downsamples GVCF files at specified rates per chromosome
@@ -77,6 +80,8 @@ downsample_gvcf:
   seed: 42                              # Optional: Random seed for reproducibility
   keep_ref: true                        # Optional: Keep reference blocks (default: true)
   min_ref_block_size: 20                # Optional: Minimum ref block size (default: 20)
+  # input: "/custom/gvcf/directory/"    # Optional: Custom GVCF input directory
+  # output: "/custom/downsample/output/" # Optional: Custom output directory
 
 # Step 4: Convert to FASTA
 # Converts downsampled GVCF files to FASTA format
@@ -84,6 +89,8 @@ downsample_gvcf:
 convert_to_fasta:
   missing_records_as: "asRef"            # Optional: Missing records (asN, asRef, asNone)
   missing_genotype_as: "asN"             # Optional: Missing genotypes (asN, asRef, asNone)
+  # input: "/custom/gvcf/input/"         # Optional: Custom GVCF input (file, directory, or text list)
+  # output: "/custom/fasta/output/"      # Optional: Custom output directory
 
 # Step 5: Align Mutated Assemblies
 # Realigns the mutated FASTA files from convert_to_fasta back to the reference
@@ -91,6 +98,8 @@ convert_to_fasta:
 # This creates a circular workflow where mutated sequences are realigned for comparison
 align_mutated_assemblies:
   threads: 1                             # Optional: Number of threads (default: 1)
+  # input: "/custom/fasta/input/"        # Optional: Custom FASTA input (file, directory, or text list)
+  # output: "/custom/alignment/output/"  # Optional: Custom output directory
 
 # ============================================================================
 # RECOMBINATION PIPELINE CONFIGURATION (Steps 6-10)
@@ -106,6 +115,7 @@ pick_crossovers:
                                               # Example:
                                               # /path/to/assembly1.fa<TAB>parent1
                                               # /path/to/assembly2.fa<TAB>parent2
+  # output: "/custom/crossovers/output/"      # Optional: Custom output directory
 
 # Step 7: Create Chain Files
 # Converts MAF alignment files to UCSC chain format for coordinate conversion
@@ -113,6 +123,8 @@ pick_crossovers:
 # Uses maf-convert tool (automatically downloaded if missing)
 create_chain_files:
   jobs: 8                                # Optional: Number of parallel jobs (default: 8)
+  # input: "/custom/maf/input/"          # Optional: Custom MAF input (file, directory, or text list)
+  # output: "/custom/chain/output/"      # Optional: Custom output directory
 
 # Step 8: Convert Coordinates
 # Converts crossover breakpoints from reference coordinates to assembly coordinates
@@ -120,6 +132,9 @@ create_chain_files:
 # Uses CrossMap for coordinate conversion via chain files
 convert_coordinates:
   assembly_list: "path/to/assembly_list.txt"  # Required: Same assembly list as pick_crossovers
+  # input_chain: "/custom/chain/directory/"   # Optional: Custom chain directory
+  # input_refkey: "/custom/refkey/directory/" # Optional: Custom refkey directory
+  # output: "/custom/coordinates/output/"     # Optional: Custom output directory
 
 # Step 9: Generate Recombined Sequences
 # Creates recombined FASTA sequences by concatenating segments from parent assemblies
@@ -135,6 +150,8 @@ generate_recombined_sequences:
   assembly_dir: "path/to/parent_assemblies/"      # Required: Directory containing parent assembly FASTA files
                                                   # Files should be named to match assembly_list names
                                                   # Example: parent1.fa, parent2.fa
+  # input: "/custom/founder_key/directory/"       # Optional: Custom founder key directory
+  # output: "/custom/recombined/output/"          # Optional: Custom output directory
 
 # Step 10: Format Recombined Fastas
 # Reformats recombined FASTA files to have consistent line widths using seqkit
@@ -143,6 +160,8 @@ generate_recombined_sequences:
 format_recombined_fastas:
   line_width: 60                         # Optional: Characters per line (default: 60)
   threads: 8                             # Optional: Number of threads (default: 8)
+  # input: "/custom/recombined/fastas/"  # Optional: Custom FASTA input (file, directory, or text list)
+  # output: "/custom/formatted/output/"  # Optional: Custom output directory
 
 # ============================================================================
 # Usage Examples:
@@ -187,6 +206,23 @@ format_recombined_fastas:
 #      # Comment out all previous steps
 #      - format_recombined_fastas   # Only this will run
 #
+# 6. Start at step 3 with your own GVCF files (custom input):
+#    run_steps:
+#      - downsample_gvcf
+#      - convert_to_fasta
+#    downsample_gvcf:
+#      input: "/path/to/my/existing/gvcf_files/"  # Use your own GVCF files
+#      rates: "0.1,0.2"
+#    convert_to_fasta:
+#      # Will automatically use output from downsample_gvcf
+#
+# 7. Run step 4 with custom input AND output:
+#    run_steps:
+#      - convert_to_fasta
+#    convert_to_fasta:
+#      input: "/data/my_gvcf_directory/"
+#      output: "/results/my_fasta_output/"
+#
 # ============================================================================
 # IMPORTANT NOTES:
 # ============================================================================
@@ -214,5 +250,13 @@ format_recombined_fastas:
 # - Step 8 (convert_coordinates) requires: outputs from steps 6 and 7
 # - Step 9 (generate_recombined_sequences) requires: output from step 8
 # - Step 10 (format_recombined_fastas) requires: output from step 9
+#
+# Custom Input/Output Paths:
+# - Each step supports optional 'input' and 'output' parameters
+# - Use 'input' to point to your own files when starting mid-pipeline
+# - Use 'output' to direct outputs to custom locations
+# - If 'input' is not specified, the step uses output from the previous step
+# - If 'output' is not specified, the step uses the default location
+# - Custom outputs are automatically used by the next step in the chain
 #
 # ============================================================================

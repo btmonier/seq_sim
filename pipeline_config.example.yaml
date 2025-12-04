@@ -22,8 +22,11 @@
 # 9. generate-recombined-sequences: Create recombined FASTA files from parent assemblies
 # 10. format-recombined-fastas: Format recombined FASTA files with consistent line widths
 #
+# PS4G CREATION (PHG Indexing for Genotype Imputation):
+# 11. rope-bwt-chr-index:       Create PHGv2 ropebwt3 index from recombined FASTA files
+#
 # NOTE: Environment setup is automatic! The orchestrate command will automatically
-#       detect if the working directory and required tools (MLImpute, biokotlin-tools)
+#       detect if the working directory and required tools (MLImpute, biokotlin-tools, PHGv2)
 #       are missing and run setup-environment for you. No manual setup required!
 # ============================================================================
 
@@ -48,6 +51,9 @@ run_steps:
   - convert_coordinates            # Step 08: Convert coordinates to assembly space
   - generate_recombined_sequences  # Step 09: Generate recombined sequences
   - format_recombined_fastas       # Step 10: Format recombined FASTA files
+
+  # PS4G Creation (PHG Indexing for Genotype Imputation)
+  - rope_bwt_chr_index             # Step 11: Create PHGv2 ropebwt3 index
 
 # ============================================================================
 # MAIN PIPELINE CONFIGURATION (Steps 1-5)
@@ -164,6 +170,25 @@ format_recombined_fastas:
   # output: "/custom/formatted/output/"  # Optional: Custom output directory
 
 # ============================================================================
+# PS4G CREATION CONFIGURATION (Step 11)
+# ============================================================================
+
+# Step 11: PHG Rope-BWT-Chr Index
+# Creates a PHGv2 ropebwt3 index from recombined FASTA files for genotype imputation
+# Automatically uses formatted FASTA files from format_recombined_fastas
+# Can also accept a pre-made keyfile with custom sample names
+rope_bwt_chr_index:
+  output_dir: "phg_index"                # Required: Output directory for index files
+  index_file_prefix: "phgIndex"          # Optional: Prefix for index files (default: "phgIndex")
+  threads: 20                            # Optional: Number of threads (default: 20)
+  delete_fmr_index: true                 # Optional: Delete .fmr files after conversion (default: true)
+  # input: "/custom/fasta/input/"        # Optional: Custom FASTA input (file, directory, or text list)
+  # keyfile: "/path/to/keyfile.txt"      # Optional: Pre-made keyfile (mutually exclusive with input)
+                                         # Keyfile format: Tab-delimited with 'Fasta' and 'SampleName' columns
+                                         # WARNING: Sample names should NOT contain underscores
+                                         # PHG uses underscores internally (e.g., samplename_contig)
+
+# ============================================================================
 # Usage Examples:
 # ============================================================================
 #
@@ -180,7 +205,7 @@ format_recombined_fastas:
 #      - align_mutated_assemblies
 #      # Comment out recombination steps
 #
-# 3. Run only the recombination pipeline (steps 1, 6-10):
+# 3. Run only the recombination pipeline (steps 1, 6-11):
 #    run_steps:
 #      - align_assemblies          # Required for MAF files
 #      # - maf_to_gvcf              # Skip GVCF steps
@@ -192,6 +217,7 @@ format_recombined_fastas:
 #      - convert_coordinates
 #      - generate_recombined_sequences
 #      - format_recombined_fastas
+#      - rope_bwt_chr_index        # Create PHG index
 #
 # 4. Run steps 1-2-4-5 (skip downsampling):
 #    run_steps:
@@ -223,6 +249,22 @@ format_recombined_fastas:
 #      input: "/data/my_gvcf_directory/"
 #      output: "/results/my_fasta_output/"
 #
+# 8. Run only PS4G index creation with custom FASTA files:
+#    run_steps:
+#      - rope_bwt_chr_index
+#    rope_bwt_chr_index:
+#      input: "/path/to/my/fasta/files/"
+#      output_dir: "my_phg_index"
+#      index_file_prefix: "myCustomIndex"
+#      threads: 40
+#
+# 9. Run PS4G index creation with a pre-made keyfile:
+#    run_steps:
+#      - rope_bwt_chr_index
+#    rope_bwt_chr_index:
+#      keyfile: "/path/to/my/keyfile.txt"
+#      output_dir: "my_phg_index"
+#
 # ============================================================================
 # IMPORTANT NOTES:
 # ============================================================================
@@ -250,6 +292,12 @@ format_recombined_fastas:
 # - Step 8 (convert_coordinates) requires: outputs from steps 6 and 7
 # - Step 9 (generate_recombined_sequences) requires: output from step 8
 # - Step 10 (format_recombined_fastas) requires: output from step 9
+#
+# PS4G Creation Dependencies:
+# - Step 11 (rope_bwt_chr_index) requires: formatted FASTA files from step 10
+# - Can also accept custom FASTA files or a pre-made keyfile
+# - Keyfile must be tab-delimited with 'Fasta' and 'SampleName' columns
+# - Sample names should NOT contain underscores (PHG internal requirement)
 #
 # Custom Input/Output Paths:
 # - Each step supports optional 'input' and 'output' parameters

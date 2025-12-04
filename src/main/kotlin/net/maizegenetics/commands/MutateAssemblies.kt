@@ -1,0 +1,221 @@
+package net.maizegenetics.net.maizegenetics.commands
+
+import apple.laf.JRSUIConstants
+import biokotlin.seqIO.NucSeqIO
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.types.path
+import com.google.common.collect.Range
+import com.google.common.collect.RangeMap
+import com.google.common.collect.TreeRangeMap
+import htsjdk.variant.vcf.VCFFileReader
+import java.io.File
+import kotlin.io.path.createDirectories
+import kotlin.io.path.exists
+
+
+data class Position(val contig: String, val position: Int) : Comparable<Position> {
+    override fun compareTo(other: Position): Int {
+
+        if (this.contig == other.contig) {
+            return this.position.compareTo(other.position)
+        }
+
+        val thisContig = this.contig.replace("chr", "", ignoreCase = true).trim()
+        val otherContig = other.contig.replace("chr", "", ignoreCase = true).trim()
+
+        return try {
+            thisContig.toInt() - otherContig.toInt()
+        } catch (e: NumberFormatException) {
+            // If we can't convert contigs to an int, then compare the strings
+            contig.compareTo(other.contig)
+        }
+
+    }
+
+    override fun toString(): String {
+        return "$contig:$position"
+    }
+}
+data class SimpleVariant(val refStart: Position, val refEnd: Position,
+                         val refAllele: String, val altAllele: String,
+                         val isAddedMutation: Boolean = false)
+
+@OptIn(kotlin.io.path.ExperimentalPathApi::class)
+class MutateAssemblies : CliktCommand(name = "mutate-assemblies") {
+
+
+    private val referenceFasta by option(
+        help = "Reference fasta file"
+    ).path(mustExist = true, canBeFile = true, canBeDir = false)
+        .required()
+
+    private val founderGvcf by option(
+        help = "Founder GVCF to mutate (.gvcf or .g.vcf.gz)"
+    ).path(mustExist = true, canBeFile = true, canBeDir = false)
+        .required()
+
+    private val nonFounderGvcf by option(
+        help = "Non-founder GVCF to pull variants from (.gvcf or .g.vcf.gz)"
+    ).path(mustExist = true, canBeFile = true, canBeDir = false)
+        .required()
+
+
+
+    private val outputDir by option(help = "Output dir")
+        .path(canBeFile = false, canBeDir = true)
+        .required()
+
+    override fun run() {
+        if(!outputDir.exists()) {
+            outputDir.createDirectories()
+        }
+
+        introduceMutations(referenceFasta.toFile(), founderGvcf.toFile(), nonFounderGvcf.toFile(), outputDir.toFile())
+
+    }
+
+    fun introduceMutations(referenceFasta: File, founderGvcf: File, mutationGvcf: File, outputDir: File) {
+        val refSeq = NucSeqIO(referenceFasta.toString()).readAll()
+
+        //walk through the two gvcf files
+        //From one  pull the mutations left
+
+        //Loop through the founderGVCF and build a RangeMap of Position to Variant
+        val founderVariantMap = buildFounderVariantMap(founderGvcf)
+
+        addNewVariants(mutationGvcf, founderVariantMap)
+    }
+
+    fun buildFounderVariantMap(founderGvcf: File) : RangeMap<Position, SimpleVariant> {
+        //Loop through the founderGVCF and build a RangeMap of Position to Variant
+        val variantReader = VCFFileReader(founderGvcf)
+
+        val iterator = variantReader.iterator()
+
+        val rangeMap = TreeRangeMap.create<Position,SimpleVariant>()
+
+        while(iterator.hasNext()) {
+            val vc = iterator.next()
+
+            val refChr = vc.contig
+            val refStart = vc.start
+            val refEnd = vc.end
+
+            val refAllele = vc.reference.displayString
+            val altAlleles = vc.alternateAlleles.map { it.displayString }
+
+            rangeMap.put(Range.closed(Position(refChr, refStart), Position(refChr, refEnd)),
+                SimpleVariant(Position(refChr, refStart), Position(refChr, refEnd), refAllele, altAlleles.joinToString(",")))
+
+        }
+
+        return rangeMap
+    }
+
+    fun addNewVariants(mutationGvcf: File, founderVariantMap: RangeMap<Position, SimpleVariant>) {
+        val variantReader = VCFFileReader(mutationGvcf)
+
+        val iterator = variantReader.iterator()
+
+        while(iterator.hasNext()) {
+            val vc = iterator.next()
+
+            val refChr = vc.contig
+            val refStart = vc.start
+            val refEnd = vc.end
+
+            val refAllele = vc.reference.displayString
+            val altAllele = vc.alternateAlleles.map { it.displayString }.first()
+
+            val variantPosition = Position(refChr, refStart)
+
+            val currentSimpleVariant = SimpleVariant(Position(refChr, refStart), Position(refChr, refEnd), refAllele, altAllele, true)
+
+            val overlappingVariantSt = founderVariantMap.get(variantPosition)
+            val overlappingVariantEnd = founderVariantMap.get(Position(refChr, refEnd))
+
+            if(overlappingVariantSt == overlappingVariantEnd) {
+                //skip as it will be tricky/slow to handle
+                continue //TODO figure out a way to handle this well
+            }
+
+            if(overlappingVariantSt == null) {
+                //This is a new variant we can add as it does not overlap with an existing variant
+                founderVariantMap.put(Range.closed(Position(refChr, refStart), Position(refChr, refEnd)), currentSimpleVariant)
+            }
+            else {
+                //we need to split out the existing and add the new variant
+                updateOverlappingVariant(founderVariantMap, currentSimpleVariant)
+            }
+
+        }
+    }
+
+    fun updateOverlappingVariant(founderVariantMap: RangeMap<Position, SimpleVariant>, variant: SimpleVariant) {
+        //Get out the overlapping entry
+        val overlappingEntry = founderVariantMap.getEntry(variant.refStart)?: return
+
+        //split it up based on the new variant
+        val existingVariant = overlappingEntry.value
+
+        if(existingVariant == variant) {
+            //same variant, nothing to do
+            return
+        }
+
+        //Check to see if the existing Variant is a SNP
+        if(existingVariant.refStart == existingVariant.refEnd) {
+            //SNP case, we can just replace it
+            founderVariantMap.put(Range.closed(variant.refStart, variant.refEnd), variant)
+        }
+        else if(existingVariant.refEnd.position > existingVariant.refStart.position && variant.refAllele.length == 1) {
+            //This is a refBlock case that fully covers the new variant
+            val splitVariants = splitRefBlock(existingVariant, variant)
+
+            founderVariantMap.remove(overlappingEntry.key)
+            for(sv in splitVariants) {
+                founderVariantMap.put(Range.closed(sv.refStart, sv.refEnd), sv)
+            }
+        }
+
+
+    }
+
+    fun splitRefBlock(variantToSplit: SimpleVariant, variantToAdd: SimpleVariant): List<SimpleVariant> {
+        //check to make sure that the variantToAdd is fully contained within the variantToSplit
+        require(variantToAdd.refStart >= variantToSplit.refStart && variantToAdd.refEnd <= variantToSplit.refEnd) {
+            "Variant to add must be fully contained within the variant to split"
+        }
+
+        val splitVariants = mutableListOf<SimpleVariant>()
+        //Check to see if the variantToAdd starts at the same position.
+        if(variantToSplit.refStart != variantToAdd.refStart) {
+            //We have a left side to create
+            val leftVariant = SimpleVariant(
+                refStart = variantToSplit.refStart,
+                refEnd = Position(variantToAdd.refStart.contig, variantToAdd.refStart.position -1),
+                refAllele = variantToSplit.refAllele,
+                altAllele = "<NON_REF>",
+                isAddedMutation = false
+            )
+            splitVariants.add(leftVariant)
+        }
+        //Add the new variant
+        splitVariants.add(variantToAdd)
+        //Check to see if we have a right side to create
+        if(variantToSplit.refEnd != variantToAdd.refEnd) {
+            val rightVariant = SimpleVariant(
+                refStart = Position(variantToAdd.refEnd.contig, variantToAdd.refEnd.position +1),
+                refEnd = variantToSplit.refEnd,
+                refAllele = variantToSplit.refAllele,
+                altAllele = "<NON_REF>",
+                isAddedMutation = false
+            )
+            splitVariants.add(rightVariant)
+        }
+        return splitVariants
+    }
+
+}

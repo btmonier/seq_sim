@@ -44,7 +44,7 @@ data class SimpleVariant(val refStart: Position, val refEnd: Position,
 
 @OptIn(kotlin.io.path.ExperimentalPathApi::class)
 class MutateAssemblies : CliktCommand(name = "mutate-assemblies") {
-    
+
 
     private val founderGvcf by option(
         help = "Founder GVCF to mutate (.gvcf or .g.vcf.gz)"
@@ -166,6 +166,18 @@ class MutateAssemblies : CliktCommand(name = "mutate-assemblies") {
         else if( existingVariant.refAllele.length == 1 && existingVariant.altAllele == "<NON_REF>"  //This checks that the existing variant is a refBlock
             && variant.refAllele.length == 1 && variant.altAllele.length == 1 ) { //This means current variant is a SNP
             //This is a refBlock case that fully covers the new variant
+            val splitVariants = splitRefBlock(existingVariant, variant)
+
+            founderVariantMap.remove(overlappingEntry.key)
+            for(sv in splitVariants) {
+                founderVariantMap.put(Range.closed(sv.refStart, sv.refEnd), sv)
+            }
+        }
+        //We also need to handle a complex edge case where we have an indel overlapping another indel.
+    // If the new indel is fully covered we can remove the existing, add potentially 2 refBlocks surrounding
+        //TODO check this logic
+        else if( variant.refStart >= existingVariant.refStart && variant.refEnd <= existingVariant.refEnd ) {
+            //The new variant is fully contained within the existing variant
             val splitVariants = splitRefBlock(existingVariant, variant)
 
             founderVariantMap.remove(overlappingEntry.key)

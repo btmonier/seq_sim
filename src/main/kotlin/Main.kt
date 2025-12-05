@@ -7,6 +7,7 @@ import net.maizegenetics.commands.AlignAssemblies
 import net.maizegenetics.commands.AlignMutatedAssemblies
 import net.maizegenetics.commands.BuildSplineKnots
 import net.maizegenetics.commands.ConvertCoordinates
+import net.maizegenetics.commands.ConvertRopebwt2Ps4g
 import net.maizegenetics.commands.ConvertToFasta
 import net.maizegenetics.commands.CreateChainFiles
 import net.maizegenetics.commands.DownsampleGvcf
@@ -41,6 +42,7 @@ fun main(args: Array<String>) = SeqSim()
         RopeBwtChrIndex(),
         RopeBwtMem(),
         BuildSplineKnots(),
+        ConvertRopebwt2Ps4g(),
         ExtractChromIds()
     )
     .main(args)

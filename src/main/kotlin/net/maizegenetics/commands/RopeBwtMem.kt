@@ -19,7 +19,6 @@ import kotlin.system.exitProcess
 class RopeBwtMem : CliktCommand(name = "ropebwt-mem") {
     companion object {
         private const val LOG_FILE_NAME = "12_ropebwt_mem.log"
-        private const val OUTPUT_DIR = "output"
         private const val ROPEBWT_MEM_RESULTS_DIR = "12_ropebwt_mem_results"
         private const val BED_FILE_PATHS_FILE = "bed_file_paths.txt"
         private const val DEFAULT_P_VALUE = 168
@@ -77,7 +76,7 @@ class RopeBwtMem : CliktCommand(name = "ropebwt-mem") {
 
     private fun calculateLValue(): Int {
         // Try to find keyfile from step 11
-        val step11OutputDir = workDir.resolve(OUTPUT_DIR).resolve("11_rope_bwt_index_results")
+        val step11OutputDir = workDir.resolve("output").resolve("11_rope_bwt_index_results")
         val keyfilePath = step11OutputDir.resolve(KEYFILE_NAME)
 
         if (!keyfilePath.exists()) {
@@ -102,7 +101,7 @@ class RopeBwtMem : CliktCommand(name = "ropebwt-mem") {
     }
 
     private fun findIndexFile(): Path {
-        val step11OutputDir = workDir.resolve(OUTPUT_DIR).resolve("11_rope_bwt_index_results")
+        val step11OutputDir = workDir.resolve("output").resolve("11_rope_bwt_index_results")
 
         if (!step11OutputDir.exists()) {
             logger.error("Cannot auto-detect index file: step 11 output directory not found at $step11OutputDir")
@@ -131,11 +130,7 @@ class RopeBwtMem : CliktCommand(name = "ropebwt-mem") {
 
     override fun run() {
         // Validate working directory exists
-        if (!workDir.exists()) {
-            logger.error("Working directory does not exist: $workDir")
-            logger.error("Please run 'setup-environment' command first")
-            exitProcess(1)
-        }
+        ValidationUtils.validateWorkingDirectory(workDir, logger)
 
         // Configure file logging to working directory
         LoggingUtils.setupFileLogging(workDir, LOG_FILE_NAME, logger)
@@ -162,12 +157,8 @@ class RopeBwtMem : CliktCommand(name = "ropebwt-mem") {
         logger.info("Using threads: $threads")
 
         // Create output directory (use custom or default)
-        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(ROPEBWT_MEM_RESULTS_DIR)
-        if (!outputDir.exists()) {
-            logger.debug("Creating output directory: $outputDir")
-            outputDir.createDirectories()
-            logger.info("Output directory created: $outputDir")
-        }
+        val outputDir = FileUtils.resolveOutputDirectory(workDir, outputDirOption, ROPEBWT_MEM_RESULTS_DIR)
+        FileUtils.createOutputDirectory(outputDir, logger)
 
         // Process each FASTQ file with ropebwt3 mem
         var successCount = 0
@@ -208,16 +199,13 @@ class RopeBwtMem : CliktCommand(name = "ropebwt-mem") {
         logger.info("ropebwt3 mem alignment completed")
         logger.info("Success: $successCount, Failures: $failureCount")
 
-        if (bedFiles.isNotEmpty()) {
-            // Write BED file paths to text file
-            val bedFilePathsFile = outputDir.resolve(BED_FILE_PATHS_FILE)
-            try {
-                bedFilePathsFile.writeLines(bedFiles.map { it.toString() })
-                logger.info("BED file paths written to: $bedFilePathsFile")
-            } catch (e: Exception) {
-                logger.error("Failed to write BED paths file: ${e.message}", e)
-            }
-        }
+        // Write BED file paths to text file
+        FileUtils.writeFilePaths(
+            bedFiles,
+            outputDir.resolve(BED_FILE_PATHS_FILE),
+            logger,
+            "BED file"
+        )
 
         logger.info("Output directory: $outputDir")
 

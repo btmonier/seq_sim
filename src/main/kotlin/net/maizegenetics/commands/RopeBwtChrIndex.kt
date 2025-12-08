@@ -3,13 +3,14 @@ package net.maizegenetics.commands
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.boolean
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
 import net.maizegenetics.Constants
+import net.maizegenetics.utils.FileUtils
 import net.maizegenetics.utils.LoggingUtils
 import net.maizegenetics.utils.ProcessRunner
+import net.maizegenetics.utils.ValidationUtils
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import java.nio.file.Path
@@ -19,7 +20,6 @@ import kotlin.system.exitProcess
 class RopeBwtChrIndex : CliktCommand(name = "rope-bwt-chr-index") {
     companion object {
         private const val LOG_FILE_NAME = "11_rope_bwt_chr_index.log"
-        private const val OUTPUT_DIR = "output"
         private const val ROPE_BWT_RESULTS_DIR = "11_rope_bwt_index_results"
         private const val KEYFILE_NAME = "phg_keyfile.txt"
         private const val DEFAULT_INDEX_PREFIX = "phgIndex"
@@ -68,62 +68,12 @@ class RopeBwtChrIndex : CliktCommand(name = "rope-bwt-chr-index") {
         .default(DEFAULT_DELETE_FMR)
 
     private fun collectFastaFiles(): List<Path> {
-        val fastaFiles = mutableListOf<Path>()
-        val actualInput = fastaInput!!
-
-        if (!actualInput.exists()) {
-            logger.error("Input path not found: $actualInput")
-            exitProcess(1)
-        }
-
-        when {
-            actualInput.isDirectory() -> {
-                logger.info("Collecting FASTA files from directory: $actualInput")
-                actualInput.listDirectoryEntries().forEach { file ->
-                    if (file.isRegularFile() && file.extension in Constants.FASTA_EXTENSIONS) {
-                        fastaFiles.add(file)
-                    }
-                }
-                if (fastaFiles.isEmpty()) {
-                    logger.error("No FASTA files found in directory: $actualInput")
-                    exitProcess(1)
-                }
-                logger.info("Found ${fastaFiles.size} FASTA file(s) in directory")
-            }
-            actualInput.isRegularFile() -> {
-                if (actualInput.extension == Constants.TEXT_FILE_EXTENSION) {
-                    logger.info("Reading FASTA file paths from: $actualInput")
-                    actualInput.readLines().forEach { line ->
-                        val trimmedLine = line.trim()
-                        if (trimmedLine.isNotEmpty() && !trimmedLine.startsWith("#")) {
-                            val fastaFile = Path(trimmedLine)
-                            if (fastaFile.exists() && fastaFile.isRegularFile()) {
-                                fastaFiles.add(fastaFile)
-                            } else {
-                                logger.warn("FASTA file not found or not a file: $trimmedLine")
-                            }
-                        }
-                    }
-                    if (fastaFiles.isEmpty()) {
-                        logger.error("No valid FASTA files found in list file: $actualInput")
-                        exitProcess(1)
-                    }
-                    logger.info("Found ${fastaFiles.size} FASTA file(s) in list")
-                } else if (actualInput.extension in Constants.FASTA_EXTENSIONS) {
-                    logger.info("Using single FASTA file: $actualInput")
-                    fastaFiles.add(actualInput)
-                } else {
-                    logger.error("FASTA file must have .fa or .fasta extension or be a .txt file with paths: $actualInput")
-                    exitProcess(1)
-                }
-            }
-            else -> {
-                logger.error("FASTA input is neither a file nor a directory: $actualInput")
-                exitProcess(1)
-            }
-        }
-
-        return fastaFiles
+        return FileUtils.collectFiles(
+            fastaInput,
+            Constants.FASTA_EXTENSIONS,
+            "FASTA",
+            logger
+        )
     }
 
     private fun generateKeyfile(fastaFiles: List<Path>, outputDir: Path): Path {
@@ -221,23 +171,8 @@ class RopeBwtChrIndex : CliktCommand(name = "rope-bwt-chr-index") {
             exitProcess(1)
         }
 
-        // Validate working directory exists
-        if (!workDir.exists()) {
-            logger.error("Working directory does not exist: $workDir")
-            logger.error("Please run 'setup-environment' command first")
-            exitProcess(1)
-        }
-
-        // Validate PHG is available
-        val phgBinary = workDir.resolve(Constants.SRC_DIR)
-            .resolve(Constants.PHGV2_DIR)
-            .resolve("bin")
-            .resolve("phg")
-        if (!phgBinary.exists()) {
-            logger.error("PHG binary not found: $phgBinary")
-            logger.error("Please run 'setup-environment' command first")
-            exitProcess(1)
-        }
+        // Validate working directory and PHG binary
+        val phgBinary = ValidationUtils.validatePhgSetup(workDir, logger)
 
         // Configure file logging to working directory
         LoggingUtils.setupFileLogging(workDir, LOG_FILE_NAME, logger)
@@ -246,17 +181,13 @@ class RopeBwtChrIndex : CliktCommand(name = "rope-bwt-chr-index") {
         logger.info("Working directory: $workDir")
 
         // Create output directory (use custom or default)
-        val outputDir = outputDirOption ?: workDir.resolve(OUTPUT_DIR).resolve(ROPE_BWT_RESULTS_DIR)
+        val outputDir = FileUtils.resolveOutputDirectory(workDir, outputDirOption, ROPE_BWT_RESULTS_DIR)
         logger.info("Output directory: $outputDir")
         logger.info("Index file prefix: $indexFilePrefix")
         logger.info("Threads: $threads")
         logger.info("Delete FMR index: $deleteFmrIndex")
 
-        if (!outputDir.exists()) {
-            logger.debug("Creating output directory: $outputDir")
-            outputDir.createDirectories()
-            logger.info("Output directory created: $outputDir")
-        }
+        FileUtils.createOutputDirectory(outputDir, logger)
 
         // Determine keyfile to use
         val actualKeyfile = if (keyfile != null) {

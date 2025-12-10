@@ -90,7 +90,7 @@ downsample_gvcf:
   ignore_contig: ""                      # Optional: Comma-separated patterns to ignore
   rates: "0.01,0.05,0.1,0.15,0.2"        # Optional: Comma-separated downsampling rates
   seed: 42                               # Optional: Random seed for reproducibility
-  keep_ref: true                         # Optional: Keep reference blocks (default: true)
+  keep_ref: true                         # Optional: Keep reference blocks (true/false, default: true)
   min_ref_block_size: 20                 # Optional: Minimum ref block size (default: 20)
   # input: "/custom/gvcf/directory/"     # Optional: Custom GVCF input directory
   # output: "/custom/downsample/output/" # Optional: Custom output directory
@@ -106,11 +106,16 @@ convert_to_fasta:
 
 # Step 5: Align Mutated Assemblies
 # Realigns the mutated FASTA files from convert_to_fasta back to the reference
-# Automatically uses ref_gff and ref_fasta from align_assemblies, and FASTA files from convert_to_fasta
+# Auto-detects reference and query FASTAs from step 4 output based on filename matching
 # This creates a circular workflow where mutated sequences are realigned for comparison
 align_mutated_assemblies:
+  # ref_gff: "path/to/reference.gff"     # Optional: Reference GFF file
+                                         #           Uses align_assemblies.ref_gff if not specified
+  # ref_fasta: "path/to/reference.fa"    # Optional: Reference FASTA from step 4 output
+                                         #           Auto-detects file matching original ref name if not specified
+  # fasta_input: "/custom/fasta/input/"  # Optional: Query FASTA input (file, directory, or text list)
+                                         #           Auto-detects non-ref files from step 4 if not specified
   threads: 1                             # Optional: Number of threads (default: 1)
-  # input: "/custom/fasta/input/"        # Optional: Custom FASTA input (file, directory, or text list)
   # output: "/custom/alignment/output/"  # Optional: Custom output directory
 
 # ============================================================================
@@ -127,6 +132,9 @@ pick_crossovers:
                                               # Example:
                                               # /path/to/assembly1.fa<TAB>parent1
                                               # /path/to/assembly2.fa<TAB>parent2
+  # ref_fasta: "path/to/reference.fa"         # Optional: Reference FASTA file
+                                              #           Uses mutated ref FASTA from step 5 if not specified
+                                              #           Falls back to align_assemblies.ref_fasta if step 5 not run
   # output: "/custom/crossovers/output/"      # Optional: Custom output directory
 
 # Step 7: Create Chain Files
@@ -186,7 +194,7 @@ format_recombined_fastas:
 rope_bwt_chr_index:
   index_file_prefix: "phgIndex"          # Optional: Prefix for index files (default: "phgIndex")
   threads: 20                            # Optional: Number of threads (default: 20)
-  delete_fmr_index: true                 # Optional: Delete .fmr files after conversion (default: true)
+  delete_fmr_index: true                 # Optional: Delete .fmr files after conversion (true/false, default: true)
   # input: "/custom/fasta/input/"        # Optional: Custom FASTA input (file, directory, or text list)
   # output: "/custom/phg_index/"         # Optional: Custom output directory (default: work_dir/output/11_rope_bwt_index_results)
   # keyfile: "/path/to/keyfile.txt"      # Optional: Pre-made keyfile (mutually exclusive with input)

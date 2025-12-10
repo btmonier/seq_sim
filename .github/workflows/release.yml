@@ -1,0 +1,211 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from build.gradle.kts
+        id: get_version
+        run: |
+          VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' build.gradle.kts)
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: v$VERSION"
+
+      - name: Get current latest tag
+        id: get_current_tag
+        run: |
+          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "current_tag=$CURRENT_TAG" >> $GITHUB_OUTPUT
+          echo "Current latest tag: $CURRENT_TAG"
+
+      - name: Check if version already released
+        id: check_version
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          CURRENT="${{ steps.get_current_tag.outputs.current_tag }}"
+          
+          # Check if this version tag already exists
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Version $VERSION already released, skipping"
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "skip_release=false" >> $GITHUB_OUTPUT
+          echo "New version $VERSION will be released"
+
+      - name: Set up JDK 21
+        if: steps.check_version.outputs.skip_release != 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        if: steps.check_version.outputs.skip_release != 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        if: steps.check_version.outputs.skip_release != 'true'
+        run: chmod +x gradlew
+
+      - name: Build distributions
+        if: steps.check_version.outputs.skip_release != 'true'
+        run: ./gradlew distTar distZip
+
+      - name: Extract release notes from merged PRs
+        id: extract_pr_notes
+        if: steps.check_version.outputs.skip_release != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREVIOUS_TAG="${{ steps.get_current_tag.outputs.current_tag }}"
+          
+          # Get the date of the previous tag, or use epoch if no previous tag
+          if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "v0.0.0" ]; then
+            SINCE_DATE=$(git log -1 --format=%aI "$PREVIOUS_TAG")
+          else
+            SINCE_DATE="1970-01-01T00:00:00Z"
+          fi
+          
+          # Fetch merged PRs since the previous tag
+          PR_BODIES=$(gh pr list --state merged --search "merged:>=$SINCE_DATE" --json body --jq '.[].body // ""')
+          
+          # Initialize section collectors
+          FEATURES=""
+          BUG_FIXES=""
+          BREAKING_CHANGES=""
+          SUMMARIES=""
+          
+          # Function to extract section content from PR body
+          extract_section() {
+            local body="$1"
+            local section="$2"
+            echo "$body" | awk -v section="$section" '
+              BEGIN { in_section=0 }
+              /^## / { 
+                if ($0 ~ "^## " section) { in_section=1; next }
+                else { in_section=0 }
+              }
+              /^---/ { in_section=0 }
+              in_section && /^- .+/ { print }
+            '
+          }
+          
+          # Process each PR body
+          while IFS= read -r body; do
+            [ -z "$body" ] && continue
+            
+            # Extract Summary (single paragraph after ## Summary)
+            summary=$(echo "$body" | awk '
+              BEGIN { in_section=0 }
+              /^## Summary/ { in_section=1; next }
+              /^## / { in_section=0 }
+              /^---/ { in_section=0 }
+              in_section && /^[^<]/ && !/^$/ { print; exit }
+            ')
+            [ -n "$summary" ] && SUMMARIES="${SUMMARIES}${summary}"$'\n'
+            
+            # Extract Features
+            features=$(extract_section "$body" "Features")
+            [ -n "$features" ] && FEATURES="${FEATURES}${features}"$'\n'
+            
+            # Extract Bug Fixes
+            bugfixes=$(extract_section "$body" "Bug Fixes")
+            [ -n "$bugfixes" ] && BUG_FIXES="${BUG_FIXES}${bugfixes}"$'\n'
+            
+            # Extract Breaking Changes
+            breaking=$(extract_section "$body" "Breaking Changes")
+            [ -n "$breaking" ] && BREAKING_CHANGES="${BREAKING_CHANGES}${breaking}"$'\n'
+            
+          done <<< "$PR_BODIES"
+          
+          # Set defaults if empty
+          [ -z "$SUMMARIES" ] && SUMMARIES="See individual changes below."
+          [ -z "$FEATURES" ] && FEATURES="- None"
+          [ -z "$BUG_FIXES" ] && BUG_FIXES="- None"
+          [ -z "$BREAKING_CHANGES" ] && BREAKING_CHANGES="- None"
+          
+          # Write to temp files (handles multiline content)
+          echo "$SUMMARIES" > /tmp/summaries.txt
+          echo "$FEATURES" > /tmp/features.txt
+          echo "$BUG_FIXES" > /tmp/bugfixes.txt
+          echo "$BREAKING_CHANGES" > /tmp/breaking.txt
+
+      - name: Generate release notes from template
+        if: steps.check_version.outputs.skip_release != 'true'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          PREVIOUS_TAG="${{ steps.get_current_tag.outputs.current_tag }}"
+          REPO="${{ github.repository }}"
+          
+          # Read extracted PR content
+          SUMMARY=$(cat /tmp/summaries.txt)
+          FEATURES=$(cat /tmp/features.txt)
+          BUG_FIXES=$(cat /tmp/bugfixes.txt)
+          BREAKING_CHANGES=$(cat /tmp/breaking.txt)
+          
+          # Read template
+          NOTES=$(cat .github/RELEASE_TEMPLATE.md)
+          
+          # Substitute variables using sed for multiline content
+          echo "$NOTES" | \
+            sed "s|\${VERSION}|$VERSION|g" | \
+            sed "s|\${REPO}|$REPO|g" | \
+            sed "s|\${PREVIOUS_TAG}|$PREVIOUS_TAG|g" > release_notes.md
+          
+          # Replace section placeholders with content
+          sed -i "s|\${SUMMARY}|$SUMMARY|g" release_notes.md
+          
+          # Use awk for multiline replacements
+          awk -v features="$FEATURES" '{gsub(/\${FEATURES}/, features)}1' release_notes.md > tmp && mv tmp release_notes.md
+          awk -v bugfixes="$BUG_FIXES" '{gsub(/\${BUG_FIXES}/, bugfixes)}1' release_notes.md > tmp && mv tmp release_notes.md
+          awk -v breaking="$BREAKING_CHANGES" '{gsub(/\${BREAKING_CHANGES}/, breaking)}1' release_notes.md > tmp && mv tmp release_notes.md
+
+      - name: Create version tag
+        if: steps.check_version.outputs.skip_release != 'true'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "Created and pushed tag: $VERSION"
+
+      - name: Upload distribution artifacts
+        if: steps.check_version.outputs.skip_release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: |
+            build/distributions/*.tar
+            build/distributions/*.zip
+
+      - name: Create Release
+        if: steps.check_version.outputs.skip_release != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            build/distributions/*.tar
+            build/distributions/*.zip
+          body_path: release_notes.md

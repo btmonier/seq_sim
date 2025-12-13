@@ -19,7 +19,6 @@
 
 - 
 
----
 
 ## Bug Fixes
 
@@ -34,7 +33,6 @@
 
 - 
 
----
 
 ## Breaking Changes
 
@@ -50,7 +48,6 @@
 
 - 
 
----
 
 ## Checklist
 
@@ -60,7 +57,6 @@
 - [ ] I have updated documentation (if applicable)
 - [ ] Breaking changes are clearly documented above
 
----
 
 <!--
 

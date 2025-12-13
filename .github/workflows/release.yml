@@ -203,10 +203,16 @@ jobs:
           REPO="${{ github.repository }}"
 
           # Read extracted PR content
-          SUMMARY=$(cat /tmp/summaries.txt)
-          FEATURES=$(cat /tmp/features.txt)
-          BUG_FIXES=$(cat /tmp/bugfixes.txt)
-          BREAKING_CHANGES=$(cat /tmp/breaking.txt)
+          SUMMARY=$(cat /tmp/summaries.txt 2>/dev/null || echo "")
+          FEATURES=$(cat /tmp/features.txt 2>/dev/null || echo "")
+          BUG_FIXES=$(cat /tmp/bugfixes.txt 2>/dev/null || echo "")
+          BREAKING_CHANGES=$(cat /tmp/breaking.txt 2>/dev/null || echo "")
+
+          # Ensure defaults for empty or whitespace-only sections
+          [[ ! "$SUMMARY" =~ [^[:space:]] ]] && SUMMARY="See individual changes below."
+          [[ ! "$FEATURES" =~ [^[:space:]] ]] && FEATURES="- None"
+          [[ ! "$BUG_FIXES" =~ [^[:space:]] ]] && BUG_FIXES="- None"
+          [[ ! "$BREAKING_CHANGES" =~ [^[:space:]] ]] && BREAKING_CHANGES="- None"
 
           # Read template
           NOTES=$(cat .github/RELEASE_TEMPLATE.md)

@@ -35,5 +35,3 @@ pytest-cov = "*"
 [tasks]
 # Add common tasks here as needed
 test = "pytest"
-
-##
